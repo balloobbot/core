@@ -71,6 +71,7 @@ from .const import (
     CONF_TRACE,
     DOMAIN,
     ENTITY_ID_FORMAT,
+    EVENT_SCRIPT_RELOADED,
     EVENT_SCRIPT_STARTED,
     LOGGER,
 )
@@ -232,6 +233,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         await async_get_blueprints(hass).async_reset_cache()
         conf = await component.async_prepare_reload(skip_reset=True)
         await _async_process_config(hass, conf, component)
+        hass.bus.async_fire(EVENT_SCRIPT_RELOADED, context=service.context)
 
     async def turn_on_service(service: ServiceCall) -> None:
         """Call a service to turn script on."""

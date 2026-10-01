@@ -8,7 +8,12 @@ from unittest.mock import ANY, Mock, patch
 import pytest
 
 from homeassistant.components import script
-from homeassistant.components.script import DOMAIN, EVENT_SCRIPT_STARTED, ScriptEntity
+from homeassistant.components.script import (
+    DOMAIN,
+    EVENT_SCRIPT_RELOADED,
+    EVENT_SCRIPT_STARTED,
+    ScriptEntity,
+)
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import (
     ATTR_ENTITY_ID,
@@ -47,6 +52,7 @@ from homeassistant.util import dt as dt_util, yaml as yaml_util
 from tests.common import (
     MockConfigEntry,
     MockUser,
+    async_capture_events,
     async_fire_time_changed,
     async_mock_service,
     mock_restore_cache,
@@ -424,12 +430,15 @@ async def test_reload_service(hass: HomeAssistant, running) -> None:
         assert script.is_on(hass, ENTITY_ID)
 
     object_id = "test" if running == "same" else "test2"
+    reload_events = async_capture_events(hass, EVENT_SCRIPT_RELOADED)
     with patch(
         "homeassistant.config.load_yaml_config_file",
         return_value={"script": {object_id: {"sequence": [{"delay": {"seconds": 5}}]}}},
     ):
         await hass.services.async_call(DOMAIN, SERVICE_RELOAD, blocking=True)
         await hass.async_block_till_done()
+
+    assert len(reload_events) == 1
 
     if running != "same":
         state = hass.states.get(ENTITY_ID)
