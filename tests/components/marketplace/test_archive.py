@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from random import getrandbits
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, PropertyMock, patch
 import zipfile
 
 from aiohttp import FormData
@@ -23,6 +23,8 @@ from . import get_marketplace
 
 from tests.common import MockConfigEntry
 from tests.typing import ClientSessionGenerator, WebSocketGenerator
+
+ARCHIVE_URL = "/api/marketplace/integration/{}/archive"
 
 type Upload = Callable[[bytes], Awaitable[str]]
 
@@ -345,22 +347,64 @@ async def test_replacing_a_built_in_integration_is_confirmed(
 
 
 @pytest.mark.usefixtures("stored_repositories")
-async def test_install_refuses_a_domain_of_a_repository(
+async def test_replacing_a_repository_is_confirmed(
+    hass: HomeAssistant,
+    marketplace: MarketplaceManager,
+    hass_ws_client: WebSocketGenerator,
+    upload: Upload,
+    config_dir: Path,
+) -> None:
+    """Test an archive takes over what a repository installed, once confirmed."""
+    repository = marketplace.repositories.get_by_full_name(
+        "hacs-test-org/integration-basic"
+    )
+    files = {"manifest.json": _manifest(domain="example"), "__init__.py": "# fix\n"}
+
+    response = await _install(hass, hass_ws_client, upload, files)
+    assert response["error"]["code"] == "replaces_repository"
+    assert response["error"]["translation_placeholders"] == {
+        "repository": "hacs-test-org/integration-basic",
+        "domain": "example",
+    }
+    assert repository.data.installed
+
+    response = await _install(
+        hass, hass_ws_client, upload, files, confirm_replace_repository=True
+    )
+    assert response["success"]
+    assert not repository.data.installed
+    assert repository.data.installed_version is None
+    assert [i.domain for i in marketplace.archives.list_installed] == ["example"]
+    assert (config_dir / "custom_components/example/__init__.py").read_text() == (
+        "# fix\n"
+    )
+
+
+@pytest.mark.usefixtures("stored_repositories")
+async def test_replacing_a_repository_waits_for_its_install(
     hass: HomeAssistant,
     marketplace: MarketplaceManager,
     hass_ws_client: WebSocketGenerator,
     upload: Upload,
 ) -> None:
-    """Test an archive can not take over what a repository installed."""
-    response = await _install(
-        hass, hass_ws_client, upload, {"manifest.json": _manifest(domain="example")}
+    """Test an archive does not replace a repository while it installs."""
+    repository = marketplace.repositories.get_by_full_name(
+        "hacs-test-org/integration-basic"
     )
 
-    assert response["error"]["translation_key"] == "integration_owned"
-    assert response["error"]["translation_placeholders"] == {
-        "domain": "example",
-        "owner": "hacs-test-org/integration-basic",
-    }
+    with patch.object(
+        type(repository), "installing", new_callable=PropertyMock, return_value=True
+    ):
+        response = await _install(
+            hass,
+            hass_ws_client,
+            upload,
+            {"manifest.json": _manifest(domain="example")},
+            confirm_replace_repository=True,
+        )
+
+    assert response["error"]["translation_key"] == "repository_busy"
+    assert repository.data.installed
 
 
 async def test_repository_takes_over_from_an_archive(
@@ -482,3 +526,102 @@ async def test_installs_survive_a_reload(
         integration.domain
         for integration in get_marketplace(hass).archives.list_installed
     ] == [ZIPPED_DOMAIN]
+
+
+@pytest.mark.usefixtures("init_integration")
+async def test_download(
+    hass: HomeAssistant, hass_client: ClientSessionGenerator, config_dir: Path
+) -> None:
+    """Test any custom integration downloads, also one copied in by hand."""
+    local = config_dir / "custom_components" / "by_hand"
+    (local / "__pycache__").mkdir(parents=True)
+    (local / "manifest.json").write_text(_manifest(domain="by_hand", version="2.0"))
+    (local / "__init__.py").write_text("# by hand\n")
+    (local / "__pycache__" / "x.pyc").write_bytes(b"bytecode")
+    (config_dir / "secrets.yaml").write_text("password: secret\n")
+    (local / "secrets.yaml").symlink_to(config_dir / "secrets.yaml")
+    client = await hass_client()
+
+    response = await client.get(ARCHIVE_URL.format("by_hand"))
+
+    assert response.status == 200
+    assert response.headers["Content-Disposition"] == (
+        'attachment; filename="by_hand-2.0.zip"'
+    )
+    with zipfile.ZipFile(io.BytesIO(await response.read())) as archive:
+        assert sorted(archive.namelist()) == [
+            "custom_components/by_hand/__init__.py",
+            "custom_components/by_hand/manifest.json",
+        ]
+
+
+async def test_download_installs_again(
+    hass: HomeAssistant,
+    marketplace: MarketplaceManager,
+    hass_client: ClientSessionGenerator,
+    hass_ws_client: WebSocketGenerator,
+    upload: Upload,
+    config_dir: Path,
+) -> None:
+    """Test a download changed and uploaded again replaces the integration."""
+    await _install(
+        hass,
+        hass_ws_client,
+        upload,
+        {"manifest.json": _manifest(), "__init__.py": "# broken\n"},
+    )
+    client = await hass_client()
+    response = await client.get(ARCHIVE_URL.format(ZIPPED_DOMAIN))
+    buffer = io.BytesIO()
+    with (
+        zipfile.ZipFile(io.BytesIO(await response.read())) as downloaded,
+        zipfile.ZipFile(buffer, "w") as fixed,
+    ):
+        for name in downloaded.namelist():
+            content = downloaded.read(name)
+            if name.endswith("__init__.py"):
+                content = b"# fixed\n"
+            fixed.writestr(name, content)
+
+    ws_client = await hass_ws_client(hass)
+    await ws_client.send_json_auto_id(
+        {
+            "type": "marketplace/archive/install",
+            "file_id": await upload(buffer.getvalue()),
+        }
+    )
+
+    assert (await ws_client.receive_json())["success"]
+    local = config_dir / "custom_components" / ZIPPED_DOMAIN
+    assert (local / "__init__.py").read_text() == "# fixed\n"
+
+
+@pytest.mark.parametrize("domain", ["missing", "Not-Valid!"])
+@pytest.mark.usefixtures("init_integration")
+async def test_download_of_what_is_not_installed(
+    hass: HomeAssistant, hass_client: ClientSessionGenerator, domain: str
+) -> None:
+    """Test a domain without a custom integration is not found."""
+    client = await hass_client()
+
+    response = await client.get(ARCHIVE_URL.format(domain))
+
+    assert response.status == 404
+
+
+@pytest.mark.usefixtures("init_integration")
+async def test_download_needs_an_admin(
+    hass: HomeAssistant,
+    hass_client: ClientSessionGenerator,
+    hass_read_only_access_token: str,
+    config_dir: Path,
+) -> None:
+    """Test only an admin downloads the code of an integration."""
+    local = config_dir / "custom_components" / ZIPPED_DOMAIN
+    local.mkdir(parents=True)
+    (local / "manifest.json").write_text(_manifest())
+    client = await hass_client(hass_read_only_access_token)
+
+    response = await client.get(ARCHIVE_URL.format(ZIPPED_DOMAIN))
+
+    assert response.status == 401

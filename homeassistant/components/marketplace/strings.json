@@ -248,6 +248,9 @@
     "replaces_built_in_not_confirmed": {
       "message": "{repository} replaces the built-in {domain} integration, confirm that before installing it."
     },
+    "replaces_repository_not_confirmed": {
+      "message": "{domain} is installed from {repository} in the Marketplace, confirm that the archive replaces it."
+    },
     "repository_archived": {
       "message": "{repository} is archived."
     },

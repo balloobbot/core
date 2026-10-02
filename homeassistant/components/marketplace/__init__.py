@@ -36,6 +36,7 @@ from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_clear_custom_components_cache
 from homeassistant.util.hass_dict import HassKey
 
+from .archive import IntegrationArchiveView
 from .base import MarketplaceConfigEntry, MarketplaceManager
 from .const import (
     CONF_WARNING_ACCEPTED,
@@ -102,6 +103,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     # The custom integration lived at /hacs, where bookmarks still point
     hass.http.register_redirect("/hacs", "/marketplace")
     hass.http.register_view(LegacyPanelRedirectView)
+    hass.http.register_view(IntegrationArchiveView)
 
     # A disabled entry counts, turning the Marketplace off is the user's call.
     # An entry of the custom integration is only left in safe and recovery

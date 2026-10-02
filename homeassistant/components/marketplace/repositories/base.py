@@ -986,6 +986,20 @@ class Repository:
                 )
             await self._async_uninstall()
 
+    async def async_release_install(self) -> None:
+        """Forget the install and keep its files, an archive install took them over.
+
+        The caller holds the filesystem lock and checked that no install runs.
+        """
+        self.logger.info("%s Released to an archive install", self.string)
+        self.data.installed = False
+        self.data.installed_version = None
+        self.data.installed_commit = None
+        self.async_dispatch_changed("uninstall")
+
+        await self.async_remove_entity_device()
+        ir.async_delete_issue(self.marketplace.hass, DOMAIN, f"removed_{self.data.id}")
+
     async def _async_uninstall(self) -> None:
         """Run uninstall tasks."""
         self.logger.info("%s Removing", self.string)

@@ -10,7 +10,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 
 from ..base import MarketplaceManager
-from ..exceptions import MarketplaceError, ReplacesBuiltInNotConfirmedError
+from ..exceptions import (
+    MarketplaceError,
+    ReplacesBuiltInNotConfirmedError,
+    ReplacesRepositoryNotConfirmedError,
+)
 from .decorators import (
     marketplace_command,
     send_marketplace_error,
@@ -47,6 +51,7 @@ async def marketplace_archives_list(
         probatio.Required("type"): "marketplace/archive/install",
         probatio.Required("file_id"): cv.string,
         probatio.Optional("confirm_replace_built_in", default=False): cv.boolean,
+        probatio.Optional("confirm_replace_repository", default=False): cv.boolean,
     }
 )
 @websocket_api.require_admin
@@ -61,7 +66,9 @@ async def marketplace_archive_install(
     """Install the integration of an uploaded archive, or update it."""
     try:
         integration = await marketplace.archives.async_install(
-            msg["file_id"], confirm_replace_built_in=msg["confirm_replace_built_in"]
+            msg["file_id"],
+            confirm_replace_built_in=msg["confirm_replace_built_in"],
+            confirm_replace_repository=msg["confirm_replace_repository"],
         )
     except ReplacesBuiltInNotConfirmedError as exception:
         send_translated_error(
@@ -69,6 +76,15 @@ async def marketplace_archive_install(
             msg["id"],
             "replaces_built_in",
             "replaces_built_in_not_confirmed",
+            exception.translation_placeholders,
+        )
+        return
+    except ReplacesRepositoryNotConfirmedError as exception:
+        send_translated_error(
+            connection,
+            msg["id"],
+            "replaces_repository",
+            "replaces_repository_not_confirmed",
             exception.translation_placeholders,
         )
         return

@@ -1,21 +1,33 @@
 """Integrations installed from a ZIP archive that a user uploaded."""
 
 from dataclasses import asdict, dataclass, field
+from http import HTTPStatus
+import io
 from pathlib import Path, PurePosixPath
+import re
 import shutil
 import tempfile
 from typing import TYPE_CHECKING, Any
 import zipfile
 
+from aiohttp import web
+from aiohttp.hdrs import CONTENT_DISPOSITION
+
 from homeassistant import components
 from homeassistant.components.file_upload import process_uploaded_file
+from homeassistant.components.http import KEY_HASS, HomeAssistantView, require_admin
 from homeassistant.helpers.issue_registry import IssueSeverity, async_create_issue
 from homeassistant.util import dt as dt_util
 from homeassistant.util.json import json_loads_object
 
 from .const import DOMAIN, RESTART_ISSUE_PREFIX
 from .enums import MarketplaceSignal, RepositoryCategory, RepositoryFile
-from .exceptions import MarketplaceError, ReplacesBuiltInNotConfirmedError
+from .exceptions import (
+    MarketplaceError,
+    ReplacesBuiltInNotConfirmedError,
+    ReplacesRepositoryNotConfirmedError,
+    RepositoryBusyError,
+)
 from .repositories.base import _check_archive_size
 from .repositories.integration import (
     _check_loadable_manifest,
@@ -28,11 +40,16 @@ from .utils.file_system import async_remove_directory, async_run_to_completion
 from .utils.logger import LOGGER
 from .utils.path import resolve_in_directory
 from .utils.storage import async_load_from_storage, async_save_to_storage
+from .utils.validate import VALID_DOMAIN
 
 if TYPE_CHECKING:
     from .base import MarketplaceManager
+    from .repositories.base import Repository
 
 STORAGE_KEY = "archives"
+
+# Only a version like this goes into the file name of a download
+SAFE_VERSION = re.compile(r"^[\w.+-]+$")
 
 
 @dataclass(slots=True)
@@ -181,36 +198,42 @@ class ArchiveIntegrations:
         manifest = Path(components.__file__).parent / domain / "manifest.json"
         return await self.hass.async_add_executor_job(manifest.is_file)
 
-    def _check_not_owned(self, domain: str) -> None:
-        """Refuse a domain that a repository of the Marketplace installed."""
+    def _owner(self, domain: str) -> Repository | None:
+        """Return the repository of the Marketplace that installed the domain."""
         for repository in self.marketplace.repositories.list_installed:
             if (
                 repository.data.category == RepositoryCategory.INTEGRATION
                 and repository.data.domain == domain
             ):
-                raise MarketplaceError(
-                    translation_domain=DOMAIN,
-                    translation_key="integration_owned",
-                    translation_placeholders={
-                        "domain": domain,
-                        "owner": repository.data.full_name,
-                    },
-                )
+                return repository
+        return None
 
     async def async_install(
-        self, file_id: str, *, confirm_replace_built_in: bool = False
+        self,
+        file_id: str,
+        *,
+        confirm_replace_built_in: bool = False,
+        confirm_replace_repository: bool = False,
     ) -> ArchiveIntegration:
         """Install the integration in an uploaded archive, or update it."""
         staging = Path(await self.hass.async_add_executor_job(tempfile.mkdtemp))
         try:
             return await self._async_install(
-                file_id, staging, confirm_replace_built_in=confirm_replace_built_in
+                file_id,
+                staging,
+                confirm_replace_built_in=confirm_replace_built_in,
+                confirm_replace_repository=confirm_replace_repository,
             )
         finally:
             await self.hass.async_add_executor_job(shutil.rmtree, staging, True)
 
     async def _async_install(
-        self, file_id: str, staging: Path, *, confirm_replace_built_in: bool
+        self,
+        file_id: str,
+        staging: Path,
+        *,
+        confirm_replace_built_in: bool,
+        confirm_replace_repository: bool,
     ) -> ArchiveIntegration:
         """Install from the archive, unpacked into staging first."""
 
@@ -231,8 +254,11 @@ class ArchiveIntegrations:
             ) from exception
 
         domain = _validated_domain(manifest.get("domain"))
-        self._check_not_owned(domain)
-        if (
+        if (owner := self._owner(domain)) is not None:
+            if not confirm_replace_repository:
+                raise ReplacesRepositoryNotConfirmedError(owner.data.full_name, domain)
+        # The install of the repository confirmed it already
+        elif (
             domain not in self._installed
             and not confirm_replace_built_in
             and await self._async_replaces_built_in(domain)
@@ -257,6 +283,14 @@ class ArchiveIntegrations:
             backup.cleanup()
 
         async with self.marketplace.filesystem_lock:
+            # Its install could have finished or started meanwhile
+            if (owner := self._owner(domain)) is not None:
+                if not confirm_replace_repository:
+                    raise ReplacesRepositoryNotConfirmedError(
+                        owner.data.full_name, domain
+                    )
+                if owner.installing:
+                    raise RepositoryBusyError(owner.data.full_name)
             try:
                 await async_run_to_completion(self.hass, _write)
             except OSError as exception:
@@ -265,6 +299,8 @@ class ArchiveIntegrations:
                     translation_key="content_write_failed",
                     translation_placeholders={"error": str(exception)},
                 ) from exception
+            if owner is not None:
+                await owner.async_release_install()
 
         name = manifest.get("name")
         integration = ArchiveIntegration(
@@ -298,6 +334,8 @@ class ArchiveIntegrations:
 
         self._installed[domain] = integration
         await self._async_save()
+        if owner is not None:
+            await self.marketplace.data.async_write()
         return integration
 
     async def async_uninstall(self, domain: str) -> None:
@@ -326,3 +364,67 @@ class ArchiveIntegrations:
                 translation_placeholders={"name": integration.name},
             )
         await self._async_save()
+
+
+def _pack(directory: Path, domain: str) -> tuple[bytes, str | None]:
+    """Return the integration as a ZIP archive, and its version."""
+    manifest_path = directory / RepositoryFile.MANIFEST_JSON
+    if not manifest_path.is_file():
+        raise FileNotFoundError(manifest_path)
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for path in sorted(directory.rglob("*")):
+            relative = path.relative_to(directory)
+            # A symlink can point anywhere on the system, bytecode is rebuilt
+            if (
+                path.is_symlink()
+                or not path.is_file()
+                or "__pycache__" in relative.parts
+            ):
+                continue
+            archive.write(path, f"custom_components/{domain}/{relative.as_posix()}")
+
+    try:
+        version = json_loads_object(manifest_path.read_text(encoding="utf-8")).get(
+            "version"
+        )
+    except ValueError:
+        version = None
+    if not isinstance(version, str) or not SAFE_VERSION.match(version):
+        version = None
+    return buffer.getvalue(), version
+
+
+class IntegrationArchiveView(HomeAssistantView):
+    """Download any installed custom integration as a ZIP archive.
+
+    The archive installs again with an upload, also after changes to it.
+    """
+
+    url = "/api/marketplace/integration/{domain}/archive"
+    name = "api:marketplace:integration_archive"
+
+    @require_admin
+    async def get(self, request: web.Request, domain: str) -> web.Response:
+        """Return the ZIP archive of the integration."""
+        if not VALID_DOMAIN.match(domain):
+            return self.json_message("Invalid domain", HTTPStatus.NOT_FOUND)
+
+        hass = request.app[KEY_HASS]
+        directory = Path(hass.config.path("custom_components", domain))
+        try:
+            content, version = await hass.async_add_executor_job(
+                _pack, directory, domain
+            )
+        except FileNotFoundError:
+            return self.json_message(
+                "Custom integration not found", HTTPStatus.NOT_FOUND
+            )
+
+        file_name = f"{domain}-{version}.zip" if version else f"{domain}.zip"
+        return web.Response(
+            body=content,
+            content_type="application/zip",
+            headers={CONTENT_DISPOSITION: f'attachment; filename="{file_name}"'},
+        )

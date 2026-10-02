@@ -60,6 +60,18 @@ class ReplacesBuiltInNotConfirmedError(MarketplaceError):
         self.domain = domain
 
 
+class ReplacesRepositoryNotConfirmedError(MarketplaceError):
+    """For an archive over an integration a repository installed, not confirmed."""
+
+    def __init__(self, repository: str, domain: str) -> None:
+        """Initialize the exception."""
+        super().__init__(
+            translation_domain=DOMAIN,
+            translation_key="replaces_repository_not_confirmed",
+            translation_placeholders={"repository": repository, "domain": domain},
+        )
+
+
 class RepositoryBusyError(MarketplaceError):
     """For a repository that is being installed, it can not change meanwhile."""
 
