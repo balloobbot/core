@@ -44,6 +44,15 @@
     "archive_download_failed": {
       "message": "Could not download the archive of {repository}."
     },
+    "archive_install_failed": {
+      "message": "Installing the ZIP archive failed: {error}"
+    },
+    "archive_manifest_ambiguous": {
+      "message": "The ZIP archive holds more than one integration: {manifests}."
+    },
+    "archive_not_installed": {
+      "message": "No integration with the domain {domain} was installed from a ZIP archive."
+    },
     "archive_not_zip": {
       "message": "The download is not a ZIP archive: {error}"
     },
@@ -55,6 +64,9 @@
     },
     "archive_without_content": {
       "message": "The archive holds nothing to install."
+    },
+    "archive_without_manifest": {
+      "message": "The ZIP archive holds no integration, it has no manifest.json."
     },
     "backup_cleanup_failed": {
       "message": "Installed, but could not remove the backup of the previous version, a restart would put it back: {error}"
@@ -304,6 +316,9 @@
     },
     "uninstall_failed": {
       "message": "Could not uninstall {repository}. Check the Home Assistant logs for details."
+    },
+    "uploaded_file_not_found": {
+      "message": "The uploaded file {file_id} does not exist, upload it again."
     },
     "validation_failed": {
       "message": "Checking {repository} failed: {error}"

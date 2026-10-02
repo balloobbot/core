@@ -11,6 +11,7 @@ from awesomeversion.exceptions import AwesomeVersionException
 import probatio
 
 from homeassistant import components
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.issue_registry import IssueSeverity, async_create_issue
 from homeassistant.loader import (
     PACKAGE_CUSTOM_COMPONENTS,
@@ -69,6 +70,25 @@ def _manifest_value(manifest: dict[str, Any], key: str, default: Any) -> Any:
             "Ignoring %s in manifest.json, %r is not valid", key, manifest[key]
         )
         return default
+
+
+async def async_reload_custom_components(hass: HomeAssistant) -> set[str]:
+    """Scan custom_components again, return the domains the loader found."""
+    # The loader mounts custom_components at startup, a first install
+    # creates the folder after that
+    if PACKAGE_CUSTOM_COMPONENTS not in sys.modules:
+        async_mount_config_dir(hass)
+    async_clear_custom_components_cache(hass)
+    return set(await async_get_custom_components(hass))
+
+
+def is_known_to_the_loader(hass: HomeAssistant, domain: str) -> bool:
+    """Return if this run already resolved the domain, its own or a built-in."""
+    try:
+        async_get_loaded_integration(hass, domain)
+    except IntegrationNotLoaded:
+        return False
+    return True
 
 
 # The version formats the loader accepts for a custom integration
@@ -190,6 +210,9 @@ class IntegrationRepository(Repository):
     @override
     async def async_post_installation(self) -> None:
         """Run post installation steps."""
+        if self.data.domain:
+            # The repository owns the directory now, also when an archive wrote it
+            await self.marketplace.archives.async_forget(self.data.domain)
         self.pending_restart = True
         if self.data.config_flow:
             found = await self.reload_custom_components()
@@ -216,11 +239,7 @@ class IntegrationRepository(Repository):
 
     def _known_to_the_loader(self) -> bool:
         """Return if this run already resolved the domain, its own or a built-in."""
-        try:
-            async_get_loaded_integration(self.marketplace.hass, str(self.data.domain))
-        except IntegrationNotLoaded:
-            return False
-        return True
+        return is_known_to_the_loader(self.marketplace.hass, str(self.data.domain))
 
     @override
     async def async_check_written_content(self) -> None:
@@ -404,14 +423,9 @@ class IntegrationRepository(Repository):
     async def reload_custom_components(self) -> set[str]:
         """Scan custom_components again, return the domains the loader found."""
         self.logger.info("Reloading custom_component cache")
-        # The loader mounts custom_components at startup, a first install
-        # creates the folder after that
-        if PACKAGE_CUSTOM_COMPONENTS not in sys.modules:
-            async_mount_config_dir(self.marketplace.hass)
-        async_clear_custom_components_cache(self.marketplace.hass)
-        found = await async_get_custom_components(self.marketplace.hass)
+        found = await async_reload_custom_components(self.marketplace.hass)
         self.logger.info("Custom_component cache reloaded")
-        return set(found)
+        return found
 
     def _integration_manifest_path(self) -> str:
         """Return the path of the manifest.json in the repository."""

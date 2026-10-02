@@ -117,6 +117,9 @@ COMMANDS: tuple[dict[str, Any], ...] = (
         "type": "marketplace/repository/releases",
         "repository_id": REPOSITORY_INTEGRATION_ID,
     },
+    {"type": "marketplace/archives/list"},
+    {"type": "marketplace/archive/install", "file_id": "unknown"},
+    {"type": "marketplace/archive/uninstall", "domain": "example"},
 )
 
 # The commands that work without a loaded Marketplace.
@@ -205,6 +208,7 @@ COMMANDS_WITHOUT_WARNING: tuple[dict[str, Any], ...] = (
         "repository": REPOSITORY_INTEGRATION_ID,
     },
     {"type": "marketplace/github/connect"},
+    {"type": "marketplace/archives/list"},
 )
 
 RATE_LIMITED = {"message": "API rate limit exceeded for 127.0.0.1."}

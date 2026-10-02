@@ -42,6 +42,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.issue_registry import IssueSeverity, async_create_issue
 from homeassistant.util import dt as dt_util
 
+from .archive import ArchiveIntegrations
 from .const import (
     CLIENT_NAME,
     CONF_WARNING_ACCEPTED,
@@ -416,6 +417,7 @@ class MarketplaceManager:
         self.recurring_runs: set[asyncio.Task[None]] = set()
         self.startup_task: asyncio.Task[None] | None = None
         self.repositories = Repositories()
+        self.archives = ArchiveIntegrations(self)
         self.status = MarketplaceStatus()
         self.system = MarketplaceSystem()
 
@@ -1002,6 +1004,9 @@ class MarketplaceManager:
         """Wait for the installs that are running to finish."""
         for repository in self.repositories.list_all:
             await repository.async_wait_for_install()
+        # Installs from an archive have no repository, they hold this lock
+        async with self.filesystem_lock:
+            pass
 
     def is_unreachable(self, repository: Repository) -> bool:
         """Return if what tells about updates of the repository can not be reached.

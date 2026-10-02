@@ -185,6 +185,7 @@ async def async_setup_entry(
 
     await _async_prepare_config_directory(hass, marketplace)
     await _async_restore(marketplace)
+    await marketplace.archives.async_load()
 
     # The restore adopts the legacy storage files, only then can they go. Safe
     # and recovery mode are the way back to an older version, that needs them.
