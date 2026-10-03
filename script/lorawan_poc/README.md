@@ -1,8 +1,7 @@
 # LoRaWAN proof of concept
 
-This development branch requires the unreleased `lorawan-connection` 0.7.0.
-The command ACK behavior below is tested with a local build. Use `lorawan-poc`
-for the version whose dependencies are available on PyPI.
+The POC uses `lorawan-connection[chirpstack]==0.7.0` from PyPI, including shared
+connections, device collections, and confirmed commands that wait for device ACKs.
 
 This worktree adds `lorawan`, `sensecap`, and `dragino` integrations. It connects to an
 existing ChirpStack 4.19 server and discovers provisioned devices. The first
@@ -47,7 +46,7 @@ integration/device/entity pages show the provider, collection, and sensors.
 
 ## Source layout
 
-- Upcoming `lorawan-connection[chirpstack]==0.7.0`: common event Protocols, fixture
+- Published `lorawan-connection[chirpstack]==0.7.0`: common event Protocols, fixture
   dataclasses, and the reusable `DeviceCollection` base.
 - `lorawan_connection.chirpstack`: shared API helpers for the generated gRPC client,
   complete inventory polling, individual event streams, and one subscription.
