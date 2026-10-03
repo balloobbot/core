@@ -14,7 +14,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import DOMAIN, SenseCapConfigEntry
-from ._vendor.sensecap_lorawan import S2101, S2101State
+from ._vendor.sensecap_lorawan import S2101
 
 DESCRIPTIONS = (
     SensorEntityDescription(
@@ -102,8 +102,4 @@ class SenseCapSensor(SensorEntity):
     async def async_added_to_hass(self) -> None:
         """Subscribe only while this entity is loaded."""
 
-        @callback
-        def updated(state: S2101State) -> None:
-            self.async_write_ha_state()
-
-        self.async_on_remove(self.device.subscribe(updated))
+        self.async_on_remove(self.device.add_update_listener(self.async_write_ha_state))

@@ -18,7 +18,9 @@ PLATFORMS = [Platform.SENSOR]
 
 async def async_setup_entry(hass: HomeAssistant, entry: SenseCapConfigEntry) -> bool:
     """Forward all vendor events to one library collection."""
-    devices = entry.runtime_data = SenseCapDeviceCollection(entry.data["network_id"])
+    devices = entry.runtime_data = SenseCapDeviceCollection(
+        network_id=entry.data["network_id"]
+    )
 
     @callback
     def disconnected() -> None:

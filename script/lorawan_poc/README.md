@@ -20,7 +20,7 @@ are also available on the proposal website.
 
 1. Run `script/setup` in this worktree. For direct test runs, install the
    integration dependencies with
-   `uv pip install "lorawan-connection[chirpstack]==0.2.0"`.
+   `uv pip install "lorawan-connection[chirpstack]==0.3.0"`.
    HA installs the package and its backend dependencies from the LoRaWAN manifest when setting up the integration.
 2. On ChirpStack, import the current device-profile catalog. Assign the **global
    SenseCAP S2101 catalog profile** for the device's radio region. A custom
@@ -43,7 +43,7 @@ integration/device/entity pages show the provider, collection, and sensors.
 
 ## Source layout
 
-- Published `lorawan-connection[chirpstack]==0.2.0`: common event Protocols, fixture
+- Published `lorawan-connection[chirpstack]==0.3.0`: common event Protocols, fixture
   dataclasses, and the reusable `DeviceCollection` base.
 - `lorawan_connection.chirpstack`: shared API helpers for the generated gRPC client,
   complete inventory polling, individual event streams, and one subscription.
@@ -61,17 +61,19 @@ trailer: the reference decoder's CRC routine is a stub.
 
 ## Library author pattern
 
-Subclass `DeviceCollection` and implement `_create_device(descriptor)`. Return a
-model only for reviewed catalog identities. Models expose `descriptor`,
-`handle_event(event)`, and `close()`. The collection automatically creates and
-retires models; callers never manually add devices.
+Subclass `Device[StateT]` for each model and declare its `vendor_id` and
+`catalog_model_id`. Declare supported classes in `DeviceCollection.DEVICES`; the
+collection builds its lookup and creates or retires models automatically. Models
+commit decoded state and call `notify()`. Consumers use `add_update_listener()`
+with callbacks that read model state. Override `_create_device()` only for special
+matching rules.
 
 ```python
 from homeassistant.components.sensecap._vendor.sensecap_lorawan import (
     SenseCapDeviceCollection,
 )
 
-models = SenseCapDeviceCollection(network_id)
+models = SenseCapDeviceCollection(network_id=network_id)
 stop_added = models.subscribe_device_added(device_added)
 stop_removed = models.subscribe_device_removed(device_removed)
 stop_events = await connection.async_subscribe(models.handle_event, disconnected)
@@ -106,7 +108,7 @@ HA and ChirpStack clocks must therefore be reasonably aligned.
 
 ## Try the device-library CLI
 
-The vendored SenseCAP library passes `SUPPORTED_MODELS` to the shared CLI helper:
+The vendored SenseCAP library passes `SenseCapDeviceCollection.DEVICES` to the shared CLI helper:
 
 ```sh
 uv run --no-sync python -m homeassistant.components.sensecap._vendor.sensecap_lorawan \
@@ -115,6 +117,8 @@ uv run --no-sync python -m homeassistant.components.sensecap._vendor.sensecap_lo
 
 Remove `--list` to watch decoded state. Add `--json` for newline-delimited JSON.
 The helper selects models, builds the collection, and observes state automatically.
+Network operations are async, and key-file reads run in a worker thread.
+Event handling, model notifications, and CLI printing remain synchronous.
 The standalone Python library will expose the same command under its package name.
 
 ## Tests
