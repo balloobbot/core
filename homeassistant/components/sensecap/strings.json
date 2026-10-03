@@ -1,0 +1,24 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "This collection is already configured",
+      "discovery_only": "First add the LoRaWAN integration. Supported devices are discovered from ChirpStack."
+    },
+    "step": {
+      "confirm": {
+        "description": "Add supported SenseCAP devices from this LoRaWAN network.",
+        "title": "Add SenseCAP"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "humidity": {
+        "name": "Humidity"
+      },
+      "temperature": {
+        "name": "Temperature"
+      }
+    }
+  }
+}
