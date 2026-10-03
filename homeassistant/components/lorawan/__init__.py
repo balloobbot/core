@@ -11,6 +11,11 @@ from lorawan_connection import (
     Unsubscribe,
     notify,
 )
+from lorawan_connection.chirpstack import (
+    AuthenticationError,
+    ChirpStackConnection,
+    ConnectionUnavailable,
+)
 
 from homeassistant import core
 from homeassistant.config_entries import SOURCE_INTEGRATION_DISCOVERY, ConfigEntry
@@ -21,7 +26,6 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import dt as dt_util
 
-from .chirpstack import AuthenticationError, ChirpStackConnection, ConnectionUnavailable
 from .const import (
     CONF_APPLICATION_IDS,
     CONF_ENDPOINT,

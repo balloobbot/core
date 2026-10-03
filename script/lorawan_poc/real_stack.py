@@ -6,8 +6,10 @@ Requires the isolated server and simulator described in README.md.
 """
 
 import asyncio
+import json
 import os
 from pathlib import Path
+import sys
 import tempfile
 
 from chirpstack_api import api, common
@@ -118,7 +120,7 @@ async def test_real_stack(hass: HomeAssistant) -> None:
         )
     ).id
     provider = vendor = None
-    simulator = None
+    simulator = cli = None
     proxy = NetworkProxy()
     await proxy.start()
     try:
@@ -187,6 +189,41 @@ async def test_real_stack(hass: HomeAssistant) -> None:
             ),
             metadata=admin_metadata,
         )
+        cli_command = [
+            sys.executable,
+            "-m",
+            "homeassistant.components.sensecap._vendor.sensecap_lorawan",
+            "--server",
+            "http://127.0.0.1:18080",
+            "--tenant",
+            tenant_id,
+            "--application",
+            application_id,
+            "--json",
+        ]
+        cli_env = {**os.environ, "CHIRPSTACK_API_KEY": readonly.token}
+        listing = await asyncio.create_subprocess_exec(
+            *cli_command,
+            "--list",
+            env=cli_env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        list_output, list_errors = await listing.communicate()
+        assert listing.returncode == 0, list_errors.decode()
+        listed = [json.loads(line) for line in list_output.splitlines()]
+        assert len(listed) == 1
+        assert listed[0]["dev_eui"] == "0201010101010101"
+        assert listed[0]["model"] == "S2101"
+        cli = await asyncio.create_subprocess_exec(
+            *cli_command,
+            env=cli_env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        async with asyncio.timeout(15):
+            initial = json.loads(await cli.stdout.readline())
+        assert initial["type"] == "added"
         setup_flow = await hass.config_entries.flow.async_init(
             "lorawan",
             context={"source": SOURCE_USER},
@@ -231,6 +268,13 @@ async def test_real_stack(hass: HomeAssistant) -> None:
                 while hass.states.get("sensor.greenhouse_temperature").state != "21.4":
                     await asyncio.sleep(0.2)
         assert hass.states.get("sensor.greenhouse_humidity").state == "31.4"
+        async with asyncio.timeout(10):
+            state = json.loads(await cli.stdout.readline())
+        assert state["type"] == "state"
+        assert state["state"] == {"temperature": 21.4, "humidity": 31.4}
+        print(
+            "PASS: generic model-list CLI discovers S2101 and prints decoded live state"
+        )
         print(
             "PASS: real OTAA join and encrypted uplink became HA temperature=21.4, humidity=31.4"
         )
@@ -276,6 +320,9 @@ async def test_real_stack(hass: HomeAssistant) -> None:
         assert not vendor.runtime_data.devices
         print("PASS: server device deletion removed the vendor model")
     finally:
+        if cli is not None and cli.returncode is None:
+            cli.terminate()
+            await cli.wait()
         if simulator is not None and simulator.returncode is None:
             simulator.terminate()
             await simulator.wait()

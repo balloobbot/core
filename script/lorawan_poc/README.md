@@ -20,8 +20,8 @@ are also available on the proposal website.
 
 1. Run `script/setup` in this worktree. For direct test runs, install the
    integration dependencies with
-   `uv pip install chirpstack-api==4.19.0 lorawan-connection==0.1.0`.
-   HA installs both from the LoRaWAN manifest when setting up the integration.
+   `uv pip install "lorawan-connection[chirpstack]==0.2.0"`.
+   HA installs the package and its backend dependencies from the LoRaWAN manifest when setting up the integration.
 2. On ChirpStack, import the current device-profile catalog. Assign the **global
    SenseCAP S2101 catalog profile** for the device's radio region. A custom
    tenant profile with the same name is not enough: ChirpStack ignores the
@@ -43,10 +43,9 @@ integration/device/entity pages show the provider, collection, and sensors.
 
 ## Source layout
 
-- Published `lorawan-connection==0.1.0`: common event Protocols, fixture
+- Published `lorawan-connection[chirpstack]==0.2.0`: common event Protocols, fixture
   dataclasses, and the reusable `DeviceCollection` base.
-- `homeassistant/components/lorawan/chirpstack.py`: integration-owned API
-  helpers for the generated gRPC client,
+- `lorawan_connection.chirpstack`: shared API helpers for the generated gRPC client,
   complete inventory polling, individual event streams, and one subscription.
 - `homeassistant/components/sensecap/_vendor/sensecap_lorawan`: S2101 decoding,
   model selection, partial state, and state observers.
@@ -54,7 +53,7 @@ integration/device/entity pages show the provider, collection, and sensors.
 
 The shared LoRaWAN library comes from PyPI. Only the SenseCAP library remains
 vendored under its temporary Core namespace; it uses no HA APIs and imports
-`lorawan_connection` directly. ChirpStack API helpers live inside the LoRaWAN integration. Generated ChirpStack bindings,
+`lorawan_connection` directly. ChirpStack API helpers ship in the optional shared-library backend. Generated ChirpStack bindings,
 gRPC, and protobuf remain ordinary dependencies. No JavaScript decoder runs in
 HA. The native decoder follows Seeed's seven-byte record layout and the catalog
 fixture. It validates length and S2101 ranges, but does not validate the two-byte
@@ -88,7 +87,7 @@ Events are borrowed, read-only Protocols. `DeviceEventData` is a small envelope;
 its payload is the original generated protobuf object, not a reconstructed
 nested dataclass. Fixture `UplinkData` and `StatusData` implement the same
 contracts. Dispatch using `EventType`, not runtime Protocol checks. Only the
-adapter imports ChirpStack bindings.
+backend and provider config flow import ChirpStack bindings.
 
 Initial inventory is delivered before `async_subscribe` returns. The adapter
 polls every 30 seconds, commits only complete snapshots, and refreshes inventory
@@ -104,6 +103,19 @@ Sleeping sensors keep their last readings; a transport disconnect is different.
 Delivery is live-only and missed readings are acceptable. The adapter compares
 Redis event IDs with connection time to discard the internal stream's backlog;
 HA and ChirpStack clocks must therefore be reasonably aligned.
+
+## Try the device-library CLI
+
+The vendored SenseCAP library passes `SUPPORTED_MODELS` to the shared CLI helper:
+
+```sh
+uv run --no-sync python -m homeassistant.components.sensecap._vendor.sensecap_lorawan \
+  --server https://host:port --api-key-file /path/to/key --tenant TENANT_UUID --list
+```
+
+Remove `--list` to watch decoded state. Add `--json` for newline-delimited JSON.
+The helper selects models, builds the collection, and observes state automatically.
+The standalone Python library will expose the same command under its package name.
 
 ## Tests
 
@@ -125,7 +137,8 @@ PYTHONPATH=. uv run --no-sync python -m pytest -p tests.conftest \
 It exercises the real config flow, catalog lookup, read-only tenant key,
 OTAA join, encrypted uplink, protobuf event stream, vendor collection, HA sensors,
 upgrade to a full tenant key, reload/backlog suppression, a real TCP outage with
-automatic retry/recovery, and device removal.
+automatic retry/recovery, and device removal. It also verifies the CLI’s inventory and decoded state against
+the same real uplink.
 No gateway hardware or RF is involved. It is not a physical SenseCAP test.
 
 ## Reproduce the external environment
@@ -185,6 +198,6 @@ This is a POC, not a claimed Bronze-quality contribution. `quality_scale.yaml`
 records remaining distribution/documentation work as `todo`. Full Hassfest
 currently rejects that incomplete quality tier; all other Hassfest plugins can
 be checked with `--skip-plugins quality_scale`. No other validation is skipped.
-Publish the libraries, add official integration documentation and brands, review
+Publish the SenseCAP library, add official integration documentation and brands, review
 the vendor-discovery registration mechanism, and test actual SenseCAP hardware
 before an upstream contribution.

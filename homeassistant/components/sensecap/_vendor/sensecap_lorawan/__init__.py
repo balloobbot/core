@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import cast, override
+from typing import ClassVar, cast, override
 
 from lorawan_connection import (
     DeviceCollection,
@@ -17,7 +17,6 @@ from lorawan_connection import (
 )
 
 VENDOR_ID = 0x02E8
-S2101_MODEL_ID = "fc455aa2-01cf-492b-9359-a5d8c9a0e1b3"
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,7 +54,10 @@ def decode_s2101(data: bytes) -> dict[str, float]:
 
 
 class S2101:
-    """S2101 model; HA never needs to inspect event types or FPorts."""
+    """S2101 model with typed state and state subscriptions."""
+
+    vendor_id: ClassVar[int] = VENDOR_ID
+    product_id: ClassVar[str] = "fc455aa2-01cf-492b-9359-a5d8c9a0e1b3"
 
     def __init__(self, descriptor: DeviceDescriptor) -> None:
         """Initialize an unobserved model."""
@@ -71,7 +73,7 @@ class S2101:
 
     def handle_event(self, event: DeviceEvent) -> None:
         """Merge a valid partial measurement without clearing other values."""
-        if self.closed or event.type != EventType.UPLINK:
+        if self.closed or event.type != EventType.UPLINK or event.data is None:
             return
         uplink = cast(Uplink, event.data)
         if uplink.f_port != 1:
@@ -99,14 +101,21 @@ class S2101:
         self._listeners.clear()
 
 
+SUPPORTED_MODELS = [S2101]
+DEVICE_MODELS: dict[tuple[int | None, str], type[S2101]] = {
+    (model.vendor_id, model.product_id): model for model in SUPPORTED_MODELS
+}
+
+
 class SenseCapDeviceCollection(DeviceCollection[S2101]):
     """A collection automatically admitting reviewed SenseCAP catalog models."""
 
     @override
     def _create_device(self, descriptor: DeviceDescriptor) -> S2101 | None:
-        if (
-            descriptor.vendor_id == VENDOR_ID
-            and descriptor.catalog_model_id == S2101_MODEL_ID
-        ):
-            return S2101(descriptor)
-        return None
+        model_class = DEVICE_MODELS.get(
+            (descriptor.vendor_id, descriptor.catalog_model_id)
+        )
+        return model_class(descriptor) if model_class is not None else None
+
+
+S2101_MODEL_ID = S2101.product_id

@@ -5,6 +5,7 @@ from typing import Any, override
 from uuid import uuid4
 
 import grpc
+from lorawan_connection.chirpstack import ChirpStackConnection, ConnectionUnavailable
 import probatio
 
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
@@ -15,7 +16,6 @@ from homeassistant.helpers.selector import (
     SelectSelectorConfig,
 )
 
-from .chirpstack import ChirpStackConnection, ConnectionUnavailable
 from .const import (
     CONF_APPLICATION_IDS,
     CONF_ENDPOINT,

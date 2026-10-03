@@ -7,8 +7,8 @@ from dataclasses import replace
 from unittest.mock import AsyncMock, Mock, patch
 
 from lorawan_connection import DeviceEventData, EventType, UplinkData
+from lorawan_connection.chirpstack import ConnectionUnavailable
 
-from homeassistant.components.lorawan.chirpstack import ConnectionUnavailable
 from homeassistant.config_entries import SOURCE_INTEGRATION_DISCOVERY, ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
