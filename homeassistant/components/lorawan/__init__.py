@@ -162,6 +162,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: LoRaWANConfigEntry) -> b
 
 async def async_subscribe(
     hass: HomeAssistant,
+    *,
     provider_entry_id: str,
     vendor_ids: frozenset[int],
     callback: Callable[[DeviceEvent], None],

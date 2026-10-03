@@ -30,7 +30,11 @@ async def test_provider_subscription(
         discovery.assert_awaited_once()
         consumer, disconnected = Mock(), Mock()
         stop = await lorawan.async_subscribe(
-            hass, provider_entry.entry_id, frozenset({744}), consumer, disconnected
+            hass,
+            provider_entry_id=provider_entry.entry_id,
+            vendor_ids=frozenset({744}),
+            callback=consumer,
+            on_disconnect=disconnected,
         )
         consumer.assert_called_once()
         callback = mock_connection.async_subscribe.call_args.args[0]
@@ -73,7 +77,11 @@ async def test_unavailable_subscription(
         lorawan.get_connection(hass, "missing")
     with pytest.raises(ConnectionUnavailable):
         await lorawan.async_subscribe(
-            hass, provider_entry.entry_id, frozenset({744}), Mock(), Mock()
+            hass,
+            provider_entry_id=provider_entry.entry_id,
+            vendor_ids=frozenset({744}),
+            callback=Mock(),
+            on_disconnect=Mock(),
         )
 
 
@@ -84,7 +92,11 @@ async def test_disconnect(
     assert await hass.config_entries.async_setup(provider_entry.entry_id)
     disconnected = Mock()
     await lorawan.async_subscribe(
-        hass, provider_entry.entry_id, frozenset({744}), Mock(), disconnected
+        hass,
+        provider_entry_id=provider_entry.entry_id,
+        vendor_ids=frozenset({744}),
+        callback=Mock(),
+        on_disconnect=disconnected,
     )
     mock_connection.available = False
     with pytest.raises(ConnectionUnavailable):
@@ -95,7 +107,11 @@ async def test_disconnect(
         reload.assert_called_once_with(provider_entry.entry_id)
     with pytest.raises(ConnectionUnavailable):
         await lorawan.async_subscribe(
-            hass, provider_entry.entry_id, frozenset({744}), Mock(), Mock()
+            hass,
+            provider_entry_id=provider_entry.entry_id,
+            vendor_ids=frozenset({744}),
+            callback=Mock(),
+            on_disconnect=Mock(),
         )
     await hass.config_entries.async_unload(provider_entry.entry_id)
 

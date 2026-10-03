@@ -84,6 +84,8 @@ stop_events = await connection.async_subscribe(models.handle_event, disconnected
 
 `subscribe_device_added` synchronously reports existing models as well as future
 ones. In `device_added`, create entities and subscribe to the model's state.
+For the HA provider's `lorawan.async_subscribe`, pass `provider_entry_id`,
+`vendor_ids`, `callback`, and `on_disconnect` as keyword arguments after `hass`.
 Forward every event to the collection; decoding, FPorts, state merging, and
 unsupported data belong to the vendor library. Close subscriptions and models
 when unloading. `test_libraries.py` is a runnable fixture example.
