@@ -20,7 +20,7 @@ are also available on the proposal website.
 
 1. Run `script/setup` in this worktree. For direct test runs, install the
    integration dependencies with
-   `uv pip install "lorawan-connection[chirpstack]==0.4.0"`.
+   `uv pip install "lorawan-connection[chirpstack]==0.5.0"`.
    HA installs the package and its backend dependencies from the LoRaWAN manifest when setting up the integration.
 2. On ChirpStack, import the current device-profile catalog. Assign the **global
    SenseCAP S2101 catalog profile** for the device's radio region. A custom
@@ -43,7 +43,7 @@ integration/device/entity pages show the provider, collection, and sensors.
 
 ## Source layout
 
-- Published `lorawan-connection[chirpstack]==0.4.0`: common event Protocols, fixture
+- Published `lorawan-connection[chirpstack]==0.5.0`: common event Protocols, fixture
   dataclasses, and the reusable `DeviceCollection` base.
 - `lorawan_connection.chirpstack`: shared API helpers for the generated gRPC client,
   complete inventory polling, individual event streams, and one subscription.
@@ -51,7 +51,7 @@ integration/device/entity pages show the provider, collection, and sensors.
   model selection, partial state, and state observers.
 - `tests/components/lorawan` and `tests/components/sensecap`: isolated tests.
 
-The shared LoRaWAN library comes from PyPI. Only the SenseCAP library remains
+The shared LoRaWAN library comes from PyPI. The SenseCAP and Dragino libraries remain
 vendored under its temporary Core namespace; it uses no HA APIs and imports
 `lorawan_connection` directly. ChirpStack API helpers ship in the optional shared-library backend. Generated ChirpStack bindings,
 gRPC, and protobuf remain ordinary dependencies. No JavaScript decoder runs in
@@ -124,7 +124,7 @@ The standalone Python library will expose the same command under its package nam
 ## Tests
 
 ```sh
-uv run --no-sync pytest tests/components/lorawan tests/components/sensecap
+uv run --no-sync pytest tests/components/lorawan tests/components/sensecap tests/components/dragino
 ```
 
 The real-server test is deliberately outside `tests/`, and is never collected
@@ -143,7 +143,7 @@ OTAA join, encrypted uplink, protobuf event stream, vendor collection, HA sensor
 upgrade to a full tenant key, reload/backlog suppression, a real TCP outage with
 automatic retry/recovery, and device removal. It also verifies the CLI’s inventory and decoded state against
 the same real uplink.
-No gateway hardware or RF is involved. It is not a physical SenseCAP test.
+No gateway hardware or RF is involved. Physical SenseCAP and Dragino devices have not been tested.
 
 ## Reproduce the external environment
 
@@ -184,13 +184,19 @@ Store the output of `chirpstack -c CONFIG_DIR create-api-key --name ha-poc` in
 `$LORAWAN_POC_DIR/api-key.txt`, mode 0600. The default test directory is
 `/tmp/lorawan-server`.
 
-Build the included `simulator.go` using the module from
+Build both simulators using a checkout of
 https://github.com/brocaar/chirpstack-simulator at commit
-`172a3a07c2796d0fcdfe5cf985c964397a71e6c4` and place the binary at
-`$LORAWAN_POC_DIR/simulator`. It adapts the upstream `single_uplink` example,
-using FPort 1, the S2101 fixture, and EU868 coding rate 4/5. See
-`SIMULATOR_LICENSE` for its MIT license. The broker exists only between the
-simulated gateway and ChirpStack; HA consumes gRPC exclusively.
+`172a3a07c2796d0fcdfe5cf985c964397a71e6c4`:
+
+```sh
+uv run --no-sync python script/lorawan_poc/build_simulators.py /path/to/chirpstack-simulator /tmp/lorawan-server
+```
+
+The builder uses a temporary Go source overlay to add a payload callback to the
+upstream simulator. The checkout remains unchanged. The Dragino simulator receives
+encrypted downlinks, changes its two emulated relays, and reports their states in
+subsequent encrypted uplinks. See `SIMULATOR_LICENSE` for the upstream MIT license.
+The broker exists between the simulated gateway and ChirpStack; HA uses gRPC.
 
 The test deletes its tenant, gateway, devices, and tenant keys in cleanup. Stop
 the isolated server/broker/Redis and remove the disposable database when done.
@@ -205,3 +211,47 @@ be checked with `--skip-plugins quality_scale`. No other validation is skipped.
 Publish the SenseCAP library, add official integration documentation and brands, review
 the vendor-discovery registration mechanism, and test actual SenseCAP hardware
 before an upstream contribution.
+
+## Dragino relay example
+
+Seeed sells the Dragino LT-22222-L, which has two relay outputs. It is a Dragino
+product and uses the separate Dragino integration. It already appears in the
+upstream ChirpStack catalog; no local catalog entry is needed.
+
+1. Provision an LT-22222-L in ChirpStack using its global **Class C** profile for
+   the device's region. Configure the hardware for Class C and working mode 1–5.
+2. Select its application in the LoRaWAN integration. Confirm the discovered Dragino
+   integration. One collection contains all supported Dragino devices on that network.
+3. Each controller exposes two switch entities, Relay 1 and Relay 2. They start
+   unknown until an uplink reports their state.
+4. Turn a relay on or off. The library encodes FPort 2 commands and passes them through
+   the LoRaWAN provider to ChirpStack's public enqueue API. The other relay is unchanged.
+5. HA updates the switch after a device report. Queue acceptance and protocol
+   acknowledgements do not imply the physical relay changed.
+
+Read-only keys can discover and monitor relays. An attempted write reports a clear
+error; replace the provider key with one that has tenant write access to enable control.
+Commands expire after 30 seconds in the server queue. There are no automatic command
+retries or queue flushes. Analog/digital sensor entities and other Dragino models are
+deferred; this POC implements the switch platform.
+
+Run the full command cycle against the disposable server:
+
+```sh
+PYTHONPATH=. uv run --no-sync python -m pytest -p tests.conftest script/lorawan_poc/real_dragino.py -s
+```
+
+This tests both relays on and off through real encrypted downlinks, reports their
+resulting states, rejects a real read-only key, recovers after a TCP outage, and
+removes models when the server device is deleted. Run it separately from the SenseCAP
+radio test because both use the same simulated gateway ID.
+
+The generic CLI can also observe the Dragino models:
+
+```sh
+uv run --no-sync python -m homeassistant.components.dragino._vendor.dragino_lorawan \
+  --server https://host:port --api-key-file /path/to/key --tenant TENANT_UUID --json
+```
+
+Protocol: https://wiki.dragino.com/docs/LoRaWAN-End-Node/io-controllers-sensor-nodes/lt-22222-l/
+Catalog: https://github.com/chirpstack/chirpstack-device-profiles/blob/master/vendors/dragino/devices/lt-22222-l.toml

@@ -1,0 +1,21 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "This collection is already configured",
+      "discovery_only": "First add the LoRaWAN integration. Supported devices are discovered from ChirpStack."
+    },
+    "step": {
+      "confirm": {
+        "description": "Add supported Dragino devices from this LoRaWAN network.",
+        "title": "Add Dragino"
+      }
+    }
+  },
+  "entity": {
+    "switch": {
+      "relay": {
+        "name": "Relay {channel}"
+      }
+    }
+  }
+}

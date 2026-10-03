@@ -7,6 +7,8 @@ from lorawan_connection import (
     DeviceDescriptor,
     DeviceEvent,
     DeviceEventData,
+    Downlink,
+    DownlinkError,
     EventType,
     Unsubscribe,
     notify,
@@ -37,7 +39,7 @@ from .websocket_api import async_register
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 # POC registration table. A manifest discovery matcher can replace this later.
-VENDORS = {744: "sensecap"}
+VENDORS = {744: "sensecap", 676: "dragino"}
 
 
 @dataclass
@@ -180,6 +182,25 @@ async def async_subscribe(
             runtime.subscribers.remove(subscriber)
 
     return unsubscribe
+
+
+async def async_send_downlink(
+    hass: HomeAssistant, provider_entry_id: str, downlink: Downlink
+) -> str:
+    """Queue a command through the configured provider's selected inventory."""
+    entry: LoRaWANConfigEntry | None = hass.config_entries.async_get_entry(
+        provider_entry_id
+    )
+    if (
+        entry is None
+        or entry.domain != DOMAIN
+        or not hasattr(entry, "runtime_data")
+        or not entry.runtime_data.connection.available
+    ):
+        raise DownlinkError("LoRaWAN provider is not connected")
+    if downlink.dev_eui not in entry.runtime_data.devices:
+        raise DownlinkError("Device is not in this LoRaWAN provider")
+    return await entry.runtime_data.connection.async_send_downlink(downlink)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: LoRaWANConfigEntry) -> bool:

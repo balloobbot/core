@@ -3,7 +3,7 @@
 from dataclasses import replace
 from unittest.mock import AsyncMock, Mock, patch
 
-from lorawan_connection import EventType
+from lorawan_connection import Downlink, DownlinkError, EventType
 from lorawan_connection.chirpstack import AuthenticationError, ConnectionUnavailable
 import pytest
 
@@ -90,4 +90,27 @@ async def test_disconnect(
         await lorawan.async_subscribe(
             hass, provider_entry.entry_id, frozenset({744}), Mock(), Mock()
         )
+    await hass.config_entries.async_unload(provider_entry.entry_id)
+
+
+@pytest.mark.parametrize("condition", ["missing", "offline", "unknown"])
+async def test_downlink_requires_available_inventory(
+    hass: HomeAssistant,
+    provider_entry: MockConfigEntry,
+    mock_connection: Mock,
+    condition: str,
+) -> None:
+    """Never send a command through a missing provider or to an unknown device."""
+    assert await hass.config_entries.async_setup(provider_entry.entry_id)
+    mock_connection.async_send_downlink = AsyncMock()
+    provider_id = provider_entry.entry_id
+    if condition == "missing":
+        provider_id = "missing"
+    elif condition == "offline":
+        mock_connection.available = False
+    with pytest.raises(DownlinkError):
+        await lorawan.async_send_downlink(
+            hass, provider_id, Downlink(DESCRIPTOR.dev_eui, 2, b"command")
+        )
+    mock_connection.async_send_downlink.assert_not_awaited()
     await hass.config_entries.async_unload(provider_entry.entry_id)
