@@ -90,7 +90,7 @@ class SenseCapSensor(SensorEntity):
     @override
     def native_value(self) -> float | None:
         """Return the last observed measurement."""
-        return getattr(self.device.state, self.entity_description.key)
+        return getattr(self.device, self.entity_description.key)
 
     @property
     @override

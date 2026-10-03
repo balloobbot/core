@@ -20,7 +20,7 @@ are also available on the proposal website.
 
 1. Run `script/setup` in this worktree. For direct test runs, install the
    integration dependencies with
-   `uv pip install "lorawan-connection[chirpstack]==0.3.0"`.
+   `uv pip install "lorawan-connection[chirpstack]==0.4.0"`.
    HA installs the package and its backend dependencies from the LoRaWAN manifest when setting up the integration.
 2. On ChirpStack, import the current device-profile catalog. Assign the **global
    SenseCAP S2101 catalog profile** for the device's radio region. A custom
@@ -43,7 +43,7 @@ integration/device/entity pages show the provider, collection, and sensors.
 
 ## Source layout
 
-- Published `lorawan-connection[chirpstack]==0.3.0`: common event Protocols, fixture
+- Published `lorawan-connection[chirpstack]==0.4.0`: common event Protocols, fixture
   dataclasses, and the reusable `DeviceCollection` base.
 - `lorawan_connection.chirpstack`: shared API helpers for the generated gRPC client,
   complete inventory polling, individual event streams, and one subscription.
@@ -61,11 +61,11 @@ trailer: the reference decoder's CRC routine is a stub.
 
 ## Library author pattern
 
-Subclass `Device[StateT]` for each model and declare its `vendor_id` and
+Subclass `Device` for each model and declare its `vendor_id` and
 `catalog_model_id`. Declare supported classes in `DeviceCollection.DEVICES`; the
 collection builds its lookup and creates or retires models automatically. Models
-commit decoded state and call `notify()`. Consumers use `add_update_listener()`
-with callbacks that read model state. Override `_create_device()` only for special
+update their own attributes and call `notify()`. Consumers use `add_update_listener()`
+with callbacks that read those attributes. Override `_create_device()` only for special
 matching rules.
 
 ```python
