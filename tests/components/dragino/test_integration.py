@@ -16,7 +16,7 @@ from lorawan_connection import (
 import pytest
 from syrupy.assertion import SnapshotAssertion
 
-from homeassistant.config_entries import SOURCE_USER, ConfigEntryState
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
@@ -237,14 +237,6 @@ async def test_command_timeout(hass: HomeAssistant, mock_connection: Mock) -> No
         await hass.services.async_call(
             "switch", "turn_on", {"entity_id": "switch.workshop_relay_1"}, blocking=True
         )
-
-
-async def test_user_flow(hass: HomeAssistant) -> None:
-    """Initial setup starts with the LoRaWAN provider."""
-    result = await hass.config_entries.flow.async_init(
-        "dragino", context={"source": SOURCE_USER}
-    )
-    assert result["reason"] == "discovery_only"
 
 
 async def test_removed_while_entities_are_added(

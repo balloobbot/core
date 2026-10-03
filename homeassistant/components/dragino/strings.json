@@ -2,11 +2,24 @@
   "config": {
     "abort": {
       "already_configured": "This collection is already configured",
-      "discovery_only": "First add the LoRaWAN integration. Supported devices are discovered from ChirpStack."
+      "no_provider": "First add the LoRaWAN integration."
+    },
+    "error": {
+      "invalid_provider": "Select an existing LoRaWAN integration."
     },
     "step": {
       "confirm": {
         "description": "Add supported Dragino devices from this LoRaWAN network.",
+        "title": "Add Dragino"
+      },
+      "user": {
+        "data": {
+          "provider_entry_id": "LoRaWAN network"
+        },
+        "data_description": {
+          "provider_entry_id": "The LoRaWAN integration that connects to your devices."
+        },
+        "description": "Choose the LoRaWAN network for your Dragino devices.",
         "title": "Add Dragino"
       }
     }

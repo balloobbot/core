@@ -1,8 +1,11 @@
-"""Confirm one Dragino collection per discovered LoRaWAN network."""
+"""Configure one Dragino collection per LoRaWAN network."""
 
 from typing import Any, override
 
+import probatio
+
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.helpers.selector import ConfigEntrySelector
 
 from . import DOMAIN
 
@@ -20,8 +23,38 @@ class DraginoConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Direct users to the provider for the initial release."""
-        return self.async_abort(reason="discovery_only")
+        """Select a provider, skipping the chooser for a single network."""
+        providers = {
+            entry.entry_id: entry
+            for entry in self.hass.config_entries.async_entries("lorawan")
+        }
+        if not providers:
+            return self.async_abort(reason="no_provider")
+
+        errors = {}
+        if user_input is None and len(providers) == 1:
+            user_input = {"provider_entry_id": next(iter(providers))}
+        if user_input is not None:
+            if provider := providers.get(user_input["provider_entry_id"]):
+                return await self.async_step_integration_discovery(
+                    {
+                        "provider_entry_id": provider.entry_id,
+                        "network_id": provider.data["network_id"],
+                    }
+                )
+            errors["base"] = "invalid_provider"
+
+        return self.async_show_form(
+            step_id="user",
+            data_schema=probatio.Schema(
+                {
+                    probatio.Required("provider_entry_id"): ConfigEntrySelector(
+                        {"integration": "lorawan"}
+                    )
+                }
+            ),
+            errors=errors,
+        )
 
     @override
     async def async_step_integration_discovery(
