@@ -3,6 +3,15 @@
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from lorawan_connection import (
+    DeviceDescriptor,
+    DeviceEvent,
+    DeviceEventData,
+    EventType,
+    Unsubscribe,
+    notify,
+)
+
 from homeassistant import core
 from homeassistant.config_entries import SOURCE_INTEGRATION_DISCOVERY, ConfigEntry
 from homeassistant.const import CONF_API_KEY
@@ -12,14 +21,6 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import dt as dt_util
 
-from ._vendor.lorawan_connection import (
-    DeviceDescriptor,
-    DeviceEvent,
-    DeviceEventData,
-    EventType,
-    Unsubscribe,
-    notify,
-)
 from .chirpstack import AuthenticationError, ChirpStackConnection, ConnectionUnavailable
 from .const import (
     CONF_APPLICATION_IDS,

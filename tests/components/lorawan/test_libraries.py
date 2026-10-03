@@ -8,14 +8,9 @@ from datetime import timedelta
 from unittest.mock import Mock
 
 from chirpstack_api import integration
+from lorawan_connection import DeviceDescriptor, DeviceEventData, EventType, UplinkData
 import pytest
 
-from homeassistant.components.lorawan._vendor.lorawan_connection import (
-    DeviceDescriptor,
-    DeviceEventData,
-    EventType,
-    UplinkData,
-)
 from homeassistant.components.sensecap._vendor.sensecap_lorawan import (
     S2101_MODEL_ID,
     SenseCapDeviceCollection,

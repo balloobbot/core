@@ -9,12 +9,9 @@ from chirpstack_api import api, integration
 from google.protobuf.json_format import MessageToJson
 from google.protobuf.message import Message
 import grpc
+from lorawan_connection import DeviceEventData, EventType
 import pytest
 
-from homeassistant.components.lorawan._vendor.lorawan_connection import (
-    DeviceEventData,
-    EventType,
-)
 from homeassistant.components.lorawan.chirpstack import (
     AuthenticationError,
     ChirpStackConnection,

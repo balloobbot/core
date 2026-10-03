@@ -11,16 +11,15 @@ from chirpstack_api import api, integration
 from google.protobuf.json_format import Parse, ParseError
 from google.protobuf.message import Message
 import grpc
-
-from homeassistant.util import dt as dt_util
-
-from ._vendor.lorawan_connection import (
+from lorawan_connection import (
     DeviceDescriptor,
     DeviceEvent,
     DeviceEventData,
     EventType,
     Unsubscribe,
 )
+
+from homeassistant.util import dt as dt_util
 
 _LOGGER = logging.getLogger(__name__)
 _MESSAGES = {

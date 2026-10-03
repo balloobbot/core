@@ -18,9 +18,10 @@ are also available on the proposal website.
 
 ## Try it in Home Assistant
 
-1. Run `script/setup` in this worktree. Install `chirpstack-api==4.19.0` with
-   `uv pip install chirpstack-api==4.19.0` if running tests directly. HA installs
-   it from the LoRaWAN manifest when setting up the integration.
+1. Run `script/setup` in this worktree. For direct test runs, install the
+   integration dependencies with
+   `uv pip install chirpstack-api==4.19.0 lorawan-connection==0.1.0`.
+   HA installs both from the LoRaWAN manifest when setting up the integration.
 2. On ChirpStack, import the current device-profile catalog. Assign the **global
    SenseCAP S2101 catalog profile** for the device's radio region. A custom
    tenant profile with the same name is not enough: ChirpStack ignores the
@@ -42,8 +43,8 @@ integration/device/entity pages show the provider, collection, and sensors.
 
 ## Source layout
 
-- `homeassistant/components/lorawan/_vendor/lorawan_connection`: common event
-  Protocols, fixture dataclasses, and the reusable `DeviceCollection` base.
+- Published `lorawan-connection==0.1.0`: common event Protocols, fixture
+  dataclasses, and the reusable `DeviceCollection` base.
 - `homeassistant/components/lorawan/chirpstack.py`: integration-owned API
   helpers for the generated gRPC client,
   complete inventory polling, individual event streams, and one subscription.
@@ -51,9 +52,9 @@ integration/device/entity pages show the provider, collection, and sensors.
   model selection, partial state, and state observers.
 - `tests/components/lorawan` and `tests/components/sensecap`: isolated tests.
 
-The shared LoRaWAN and SenseCAP libraries are vendored. Their imports use their
-temporary Core namespace; they otherwise do not use HA APIs. ChirpStack API
-helpers live inside the LoRaWAN integration. Generated ChirpStack bindings,
+The shared LoRaWAN library comes from PyPI. Only the SenseCAP library remains
+vendored under its temporary Core namespace; it uses no HA APIs and imports
+`lorawan_connection` directly. ChirpStack API helpers live inside the LoRaWAN integration. Generated ChirpStack bindings,
 gRPC, and protobuf remain ordinary dependencies. No JavaScript decoder runs in
 HA. The native decoder follows Seeed's seven-byte record layout and the catalog
 fixture. It validates length and S2101 ranges, but does not validate the two-byte

@@ -1,14 +1,11 @@
 """SenseCAP models consuming transport-independent LoRaWAN events."""
 
-# Direct imports preserve the vendored library boundary.
-# pylint: disable=home-assistant-component-root-import
-
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import cast, override
 
-from homeassistant.components.lorawan._vendor.lorawan_connection import (
+from lorawan_connection import (
     DeviceCollection,
     DeviceDescriptor,
     DeviceEvent,

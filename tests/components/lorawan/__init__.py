@@ -1,1 +1,1 @@
-"""Tests for the LoRaWAN integration and its vendored libraries."""
+"""Tests for the LoRaWAN integration and shared library contracts."""

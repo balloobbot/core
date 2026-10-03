@@ -3,10 +3,10 @@
 from dataclasses import replace
 from unittest.mock import AsyncMock, Mock, patch
 
+from lorawan_connection import EventType
 import pytest
 
 from homeassistant.components import lorawan
-from homeassistant.components.lorawan._vendor.lorawan_connection import EventType
 from homeassistant.components.lorawan.chirpstack import (
     AuthenticationError,
     ConnectionUnavailable,
