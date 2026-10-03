@@ -40,9 +40,9 @@ class LoRaWANConfigFlow(ConfigFlow, domain=DOMAIN):
         return ChirpStackConnection(
             self._input[CONF_ENDPOINT],
             self._input[CONF_API_KEY],
-            self._input.get(CONF_TENANT_ID, ""),
-            [],
-            "validation",
+            tenant_id=self._input.get(CONF_TENANT_ID),
+            application_ids=[],
+            network_id="validation",
         )
 
     @override

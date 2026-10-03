@@ -75,9 +75,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: LoRaWANConfigEntry) -> b
     connection = ChirpStackConnection(
         entry.data[CONF_ENDPOINT],
         entry.data[CONF_API_KEY],
-        entry.data[CONF_TENANT_ID],
-        entry.data[CONF_APPLICATION_IDS],
-        entry.data[CONF_NETWORK_ID],
+        tenant_id=entry.data[CONF_TENANT_ID],
+        application_ids=entry.data[CONF_APPLICATION_IDS],
+        network_id=entry.data[CONF_NETWORK_ID],
     )
     runtime = entry.runtime_data = LoRaWANData(connection)
 
