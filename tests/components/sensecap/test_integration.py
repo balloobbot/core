@@ -55,6 +55,12 @@ async def test_sensor_lifecycle(hass: HomeAssistant) -> None:
         entry.runtime_data.handle_event(inventory(second))
         await hass.async_block_till_done()
         assert hass.states.get("sensor.bedroom_temperature").state == "unknown"
+        temporary = replace(DESCRIPTOR, dev_eui="0201010101010103", name="Temporary")
+        entry.runtime_data.handle_event(inventory(temporary))
+        entry.runtime_data.handle_event(inventory(temporary, EventType.REMOVED))
+        await hass.async_block_till_done()
+        assert hass.states.get("sensor.temporary_temperature") is None
+        assert hass.states.get("sensor.temporary_humidity") is None
         entry.runtime_data.handle_event(inventory(DESCRIPTOR, EventType.REMOVED))
         await hass.async_block_till_done()
         assert hass.states.get("sensor.greenhouse_temperature") is None

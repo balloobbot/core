@@ -8,6 +8,6 @@
   "integration_type": "hub",
   "iot_class": "local_push",
   "requirements": [
-    "lorawan-connection[chirpstack]@https://github.com/home-assistant-libs/lorawan-connection/archive/fca8cd33e53d85b260ebf1104cd17b95c4519d58.zip"
+    "lorawan-connection[chirpstack]@https://github.com/home-assistant-libs/lorawan-connection/archive/9fae0623663ded6a40d3b1f33be7e46811467b12.zip"
   ]
 }

@@ -40,29 +40,14 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Listen for models, including those created during initial inventory."""
-    entities: dict[str, list[SenseCapSensor]] = {}
 
     @callback
     def added(device: S2101) -> None:
-        sensors = entities[device.descriptor.dev_eui] = [
+        async_add_entities(
             SenseCapSensor(device, description) for description in DESCRIPTIONS
-        ]
-        async_add_entities(sensors)
-
-    @callback
-    def removed(device: S2101) -> None:
-        for entity in entities.pop(device.descriptor.dev_eui, []):
-            entity.retired = True
-            if entity.hass is not None:
-                entity.async_write_ha_state()
-                entry.async_create_task(
-                    hass,
-                    entity.async_remove(force_remove=True),
-                    "Remove SenseCAP entity",
-                )
+        )
 
     entry.async_on_unload(entry.runtime_data.subscribe_device_added(added))
-    entry.async_on_unload(entry.runtime_data.subscribe_device_removed(removed))
 
 
 class SenseCapSensor(SensorEntity):
@@ -75,7 +60,6 @@ class SenseCapSensor(SensorEntity):
         """Bind one measurement to its model."""
         self.device = device
         self.entity_description = description
-        self.retired = False
         descriptor = device.descriptor
         identity = f"{descriptor.network_id}:{descriptor.dev_eui}"
         self._attr_unique_id = f"{identity}:channel_1:{description.key}"
@@ -96,10 +80,22 @@ class SenseCapSensor(SensorEntity):
     @override
     def available(self) -> bool:
         """Normal device sleep does not mean unavailable."""
-        return not self.retired and not self.device.closed
+        return not self.device.closed
 
     @override
     async def async_added_to_hass(self) -> None:
         """Subscribe only while this entity is loaded."""
 
+        if self.device.closed:
+            self.hass.async_create_task(self.async_remove(force_remove=True))
+            return
         self.async_on_remove(self.device.add_update_listener(self.async_write_ha_state))
+        self.async_on_remove(
+            self.device.add_remove_listener(self._async_device_removed)
+        )
+
+    @callback
+    def _async_device_removed(self) -> None:
+        """Retire this entity when its library model leaves the collection."""
+        self.async_write_ha_state()
+        self.hass.async_create_task(self.async_remove(force_remove=True))

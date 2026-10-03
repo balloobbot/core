@@ -1,6 +1,6 @@
 # LoRaWAN proof of concept
 
-The POC pins `lorawan-connection[chirpstack]` to commit `fca8cd33e53d85b260ebf1104cd17b95c4519d58`.
+The POC pins `lorawan-connection[chirpstack]` to commit `9fae0623663ded6a40d3b1f33be7e46811467b12`.
 It includes collection-managed subscriptions and a restricted consumer connection.
 The manifest uses that commit until the next PyPI release.
 
@@ -24,7 +24,7 @@ are also available on the proposal website.
 
 1. Run `script/setup` in this worktree. For direct test runs, install the
    integration dependencies with
-   `uv pip install "lorawan-connection[chirpstack]@https://github.com/home-assistant-libs/lorawan-connection/archive/fca8cd33e53d85b260ebf1104cd17b95c4519d58.zip"`.
+   `uv pip install "lorawan-connection[chirpstack]@https://github.com/home-assistant-libs/lorawan-connection/archive/9fae0623663ded6a40d3b1f33be7e46811467b12.zip"`.
    HA installs the package and its backend dependencies from the LoRaWAN manifest when setting up the integration.
 2. On ChirpStack, import the current device-profile catalog. Assign the **global
    SenseCAP S2101 catalog profile** for the device's radio region. A custom
