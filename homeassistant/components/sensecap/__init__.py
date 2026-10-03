@@ -18,9 +18,11 @@ PLATFORMS = [Platform.SENSOR]
 
 async def async_setup_entry(hass: HomeAssistant, entry: SenseCapConfigEntry) -> bool:
     """Forward all vendor events to one library collection."""
-    devices = entry.runtime_data = SenseCapDeviceCollection(
-        network_id=entry.data["network_id"]
-    )
+    try:
+        connection = lorawan.get_connection(hass, entry.data["provider_entry_id"])
+    except ConnectionUnavailable as error:
+        raise ConfigEntryNotReady("LoRaWAN provider is not connected") from error
+    devices = entry.runtime_data = SenseCapDeviceCollection(connection)
 
     @callback
     def disconnected() -> None:

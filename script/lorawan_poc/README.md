@@ -77,7 +77,7 @@ from homeassistant.components.sensecap._vendor.sensecap_lorawan import (
     SenseCapDeviceCollection,
 )
 
-models = SenseCapDeviceCollection(network_id=network_id)
+models = SenseCapDeviceCollection(connection)
 stop_added = models.subscribe_device_added(device_added)
 stop_removed = models.subscribe_device_removed(device_removed)
 stop_events = await connection.async_subscribe(models.handle_event, disconnected)

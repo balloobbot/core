@@ -25,6 +25,7 @@ async def test_provider_subscription(
     )
     with patch.object(hass.config_entries.flow, "async_init", AsyncMock()) as discovery:
         assert await hass.config_entries.async_setup(provider_entry.entry_id)
+        assert lorawan.get_connection(hass, provider_entry.entry_id) is mock_connection
         await hass.async_block_till_done()
         discovery.assert_awaited_once()
         consumer, disconnected = Mock(), Mock()
@@ -67,6 +68,10 @@ async def test_unavailable_subscription(
 ) -> None:
     """Unloaded and missing providers cannot accept subscriptions."""
     with pytest.raises(ConnectionUnavailable):
+        lorawan.get_connection(hass, provider_entry.entry_id)
+    with pytest.raises(ConnectionUnavailable):
+        lorawan.get_connection(hass, "missing")
+    with pytest.raises(ConnectionUnavailable):
         await lorawan.async_subscribe(
             hass, provider_entry.entry_id, frozenset({744}), Mock(), Mock()
         )
@@ -82,6 +87,8 @@ async def test_disconnect(
         hass, provider_entry.entry_id, frozenset({744}), Mock(), disconnected
     )
     mock_connection.available = False
+    with pytest.raises(ConnectionUnavailable):
+        lorawan.get_connection(hass, provider_entry.entry_id)
     with patch.object(hass.config_entries, "async_schedule_reload") as reload:
         mock_connection.async_subscribe.call_args.args[1](ConnectionUnavailable())
         disconnected.assert_called_once()

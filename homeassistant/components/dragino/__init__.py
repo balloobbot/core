@@ -1,7 +1,5 @@
 """Dragino devices on a LoRaWAN provider."""
 
-from functools import partial
-
 from homeassistant.components import lorawan
 from homeassistant.components.lorawan import ConnectionUnavailable
 from homeassistant.config_entries import ConfigEntry
@@ -20,12 +18,11 @@ PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR, Platform.SWITCH]
 
 async def async_setup_entry(hass: HomeAssistant, entry: DraginoConfigEntry) -> bool:
     """Forward all vendor events to one library collection."""
-    devices = entry.runtime_data = DraginoDevices(
-        network_id=entry.data["network_id"],
-        send_downlink=partial(
-            lorawan.async_send_downlink, hass, entry.data["provider_entry_id"]
-        ),
-    )
+    try:
+        connection = lorawan.get_connection(hass, entry.data["provider_entry_id"])
+    except ConnectionUnavailable as error:
+        raise ConfigEntryNotReady("LoRaWAN provider is not connected") from error
+    devices = entry.runtime_data = DraginoDevices(connection)
 
     @callback
     def disconnected() -> None:

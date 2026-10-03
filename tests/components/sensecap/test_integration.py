@@ -38,9 +38,15 @@ async def test_sensor_lifecycle(hass: HomeAssistant) -> None:
         callback(inventory())
         return stop
 
-    with patch(
-        "homeassistant.components.sensecap.lorawan.async_subscribe",
-        side_effect=subscribe,
+    with (
+        patch(
+            "homeassistant.components.sensecap.lorawan.get_connection",
+            return_value=Mock(network_id="network"),
+        ),
+        patch(
+            "homeassistant.components.sensecap.lorawan.async_subscribe",
+            side_effect=subscribe,
+        ),
     ):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()

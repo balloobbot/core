@@ -33,6 +33,8 @@ def provider_entry(hass: HomeAssistant) -> MockConfigEntry:
 def mock_connection() -> Generator[Mock]:
     """Mock only the transport boundary, not provider or vendor wiring."""
     connection = Mock(
+        network_id="network",
+        async_send_downlink=AsyncMock(return_value="queue-id"),
         available=True,
         async_subscribe=AsyncMock(),
         close=AsyncMock(),

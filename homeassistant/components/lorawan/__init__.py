@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from lorawan_connection import (
+    Connection,
     DeviceDescriptor,
     DeviceEvent,
     DeviceEventData,
@@ -62,6 +63,22 @@ class LoRaWANData:
 
 
 type LoRaWANConfigEntry = ConfigEntry[LoRaWANData]
+
+
+@core.callback
+def get_connection(hass: HomeAssistant, provider_entry_id: str) -> Connection:
+    """Return the provider's connected network for a device collection."""
+    entry: LoRaWANConfigEntry | None = hass.config_entries.async_get_entry(
+        provider_entry_id
+    )
+    if (
+        entry is None
+        or entry.domain != DOMAIN
+        or not hasattr(entry, "runtime_data")
+        or not entry.runtime_data.connection.available
+    ):
+        raise ConnectionUnavailable("LoRaWAN provider is not connected")
+    return entry.runtime_data.connection
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
