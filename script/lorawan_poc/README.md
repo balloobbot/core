@@ -38,7 +38,9 @@ are also available on the proposal website.
    keys require their tenant UUID. ChirpStack reports insufficient listing scope
    as UNAUTHENTICATED, so the flow validates the key after selecting a tenant. Full-access and read-only keys both work.
 6. Confirm the discovered SenseCAP integration. It creates one collection for
-   the network, and adds further supported devices automatically.
+   the network, and adds further supported devices automatically. You can also
+   use Add integration → SenseCAP. With one LoRaWAN entry, it selects that network
+   automatically; with several, it asks which network to use.
 
 The admin-only `lorawan/devices` websocket command takes `entry_id` and returns
 current descriptors and availability. It exposes no credentials. The regular HA
