@@ -7,5 +7,7 @@
   "documentation": "https://www.home-assistant.io/integrations/lorawan",
   "integration_type": "hub",
   "iot_class": "local_push",
-  "requirements": ["lorawan-connection[chirpstack]==0.7.0"]
+  "requirements": [
+    "lorawan-connection[chirpstack]@https://github.com/home-assistant-libs/lorawan-connection/archive/fca8cd33e53d85b260ebf1104cd17b95c4519d58.zip"
+  ]
 }

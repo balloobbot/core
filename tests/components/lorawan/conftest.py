@@ -3,6 +3,7 @@
 from collections.abc import Generator
 from unittest.mock import AsyncMock, Mock, patch
 
+from lorawan_connection.chirpstack import ChirpStackConnection
 import pytest
 
 from homeassistant.core import HomeAssistant
@@ -32,15 +33,22 @@ def provider_entry(hass: HomeAssistant) -> MockConfigEntry:
 @pytest.fixture
 def mock_connection() -> Generator[Mock]:
     """Mock only the transport boundary, not provider or vendor wiring."""
-    connection = Mock(
+    connection = ChirpStackConnection(
+        "http://server:8080",
+        "secret",
+        tenant_id="tenant",
+        application_ids=["application"],
         network_id="network",
-        async_send_downlink=AsyncMock(return_value="queue-id"),
-        available=True,
-        async_subscribe=AsyncMock(),
-        close=AsyncMock(),
-        tenants=AsyncMock(return_value={"tenant": "Home"}),
-        applications=AsyncMock(return_value={"application": "Sensors"}),
+        channel=Mock(close=AsyncMock()),
     )
+    connection.async_connect = AsyncMock(
+        side_effect=lambda: setattr(connection, "available", True)
+    )
+    connection.async_send_downlink = AsyncMock(return_value="queue-id")
+    connection.async_subscribe = AsyncMock(wraps=connection.async_subscribe)
+    connection.close = AsyncMock(wraps=connection.close)
+    connection.tenants = AsyncMock(return_value={"tenant": "Home"})
+    connection.applications = AsyncMock(return_value={"application": "Sensors"})
     with (
         patch(
             "homeassistant.components.lorawan.ChirpStackConnection",

@@ -1,7 +1,8 @@
 # LoRaWAN proof of concept
 
-The POC uses `lorawan-connection[chirpstack]==0.7.0` from PyPI, including shared
-connections, device collections, and confirmed commands that wait for device ACKs.
+The POC pins `lorawan-connection[chirpstack]` to commit `fca8cd33e53d85b260ebf1104cd17b95c4519d58`.
+It includes collection-managed subscriptions and a restricted consumer connection.
+The manifest uses that commit until the next PyPI release.
 
 This worktree adds `lorawan`, `sensecap`, and `dragino` integrations. It connects to an
 existing ChirpStack 4.19 server and discovers provisioned devices. The first
@@ -23,7 +24,7 @@ are also available on the proposal website.
 
 1. Run `script/setup` in this worktree. For direct test runs, install the
    integration dependencies with
-   `uv pip install "lorawan-connection[chirpstack]==0.7.0"`.
+   `uv pip install "lorawan-connection[chirpstack]@https://github.com/home-assistant-libs/lorawan-connection/archive/fca8cd33e53d85b260ebf1104cd17b95c4519d58.zip"`.
    HA installs the package and its backend dependencies from the LoRaWAN manifest when setting up the integration.
 2. On ChirpStack, import the current device-profile catalog. Assign the **global
    SenseCAP S2101 catalog profile** for the device's radio region. A custom
@@ -48,7 +49,7 @@ integration/device/entity pages show the provider, collection, and sensors.
 
 ## Source layout
 
-- Published `lorawan-connection[chirpstack]==0.7.0`: common event Protocols, fixture
+- `lorawan-connection[chirpstack]`: common event Protocols, fixture
   dataclasses, and the reusable `DeviceCollection` base.
 - `lorawan_connection.chirpstack`: shared API helpers for the generated gRPC client,
   complete inventory polling, individual event streams, and one subscription.
@@ -56,7 +57,7 @@ integration/device/entity pages show the provider, collection, and sensors.
   model selection, partial state, and state observers.
 - `tests/components/lorawan` and `tests/components/sensecap`: isolated tests.
 
-The shared LoRaWAN library comes from PyPI. The SenseCAP and Dragino libraries remain
+The shared LoRaWAN library uses the commit pinned in the manifest. The SenseCAP and Dragino libraries remain
 vendored under its temporary Core namespace; it uses no HA APIs and imports
 `lorawan_connection` directly. ChirpStack API helpers ship in the optional shared-library backend. Generated ChirpStack bindings,
 gRPC, and protobuf remain ordinary dependencies. No JavaScript decoder runs in
@@ -81,13 +82,14 @@ from homeassistant.components.sensecap._vendor.sensecap_lorawan import (
 models = SenseCapDeviceCollection(connection)
 stop_added = models.subscribe_device_added(device_added)
 stop_removed = models.subscribe_device_removed(device_removed)
-stop_events = await connection.async_subscribe(models.handle_event, disconnected)
+await models.async_setup()
 ```
 
 `subscribe_device_added` synchronously reports existing models as well as future
 ones. In `device_added`, create entities and subscribe to the model's state.
-For the HA provider's `lorawan.async_subscribe`, pass `provider_entry_id`,
-`vendor_ids`, `callback`, and `on_disconnect` as keyword arguments after `hass`.
+Resolve the restricted connection with `lorawan.get_connection(hass, provider_entry_id)`.
+Attach a reload listener with `connection.on_disconnect(callback)`. The collection
+selects its vendors and owns its subscription; closing it leaves the connection open.
 Forward every event to the collection; decoding, FPorts, state merging, and
 unsupported data belong to the vendor library. Close subscriptions and models
 when unloading. `test_libraries.py` is a runnable fixture example.
@@ -98,7 +100,7 @@ nested dataclass. Fixture `UplinkData` and `StatusData` implement the same
 contracts. Dispatch using `EventType`, not runtime Protocol checks. Only the
 backend and provider config flow import ChirpStack bindings.
 
-Initial inventory is delivered before `async_subscribe` returns. The adapter
+Existing devices are delivered before `devices.async_setup()` returns. The adapter
 polls every 30 seconds, commits only complete snapshots, and refreshes inventory
 before delivering activity for an unknown device. Current per-device streams
 usually mean polling discovers a new device first. Unsubscribe stops callback
@@ -213,8 +215,9 @@ Never commit API keys, database files, or runtime logs.
 
 This is a POC, not a claimed Bronze-quality contribution. `quality_scale.yaml`
 records remaining distribution/documentation work as `todo`. Full Hassfest
-currently rejects that incomplete quality tier; all other Hassfest plugins can
-be checked with `--skip-plugins quality_scale`. No other validation is skipped.
+currently rejects that incomplete quality tier. The temporary commit URL also
+fails the PyPI-only requirement checks and requirements generator. Replace it
+with the next published library version before submission.
 Publish the SenseCAP library, add official integration documentation and brands, review
 the vendor-discovery registration mechanism, and test actual SenseCAP hardware
 before an upstream contribution.

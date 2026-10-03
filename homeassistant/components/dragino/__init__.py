@@ -4,11 +4,11 @@ from homeassistant.components import lorawan
 from homeassistant.components.lorawan import ConnectionUnavailable
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 
-from ._vendor.dragino_lorawan import VENDOR_ID, DraginoDevices
+from ._vendor.dragino_lorawan import DraginoDevices
 
 DOMAIN = "dragino"
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -22,25 +22,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: DraginoConfigEntry) -> b
         connection = lorawan.get_connection(hass, entry.data["provider_entry_id"])
     except ConnectionUnavailable as error:
         raise ConfigEntryNotReady("LoRaWAN provider is not connected") from error
-    devices = entry.runtime_data = DraginoDevices(connection)
-
-    @callback
-    def disconnected() -> None:
-        hass.config_entries.async_schedule_reload(entry.entry_id)
-
-    try:
-        stop = await lorawan.async_subscribe(
-            hass,
-            provider_entry_id=entry.data["provider_entry_id"],
-            vendor_ids=frozenset({VENDOR_ID}),
-            callback=devices.handle_event,
-            on_disconnect=disconnected,
+    entry.async_on_unload(
+        connection.on_disconnect(
+            lambda: hass.config_entries.async_schedule_reload(entry.entry_id)
         )
-    except ConnectionUnavailable as error:
-        devices.close()
-        raise ConfigEntryNotReady("LoRaWAN provider is not connected") from error
-    entry.async_on_unload(stop)
+    )
+    devices = entry.runtime_data = DraginoDevices(connection)
     entry.async_on_unload(devices.close)
+    try:
+        await devices.async_setup()
+    except ConnectionUnavailable as error:
+        raise ConfigEntryNotReady("LoRaWAN provider is not connected") from error
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 

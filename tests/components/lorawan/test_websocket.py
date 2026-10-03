@@ -4,7 +4,7 @@ from unittest.mock import Mock
 
 from homeassistant.core import HomeAssistant
 
-from .test_libraries import inventory
+from .test_libraries import DESCRIPTOR
 
 from tests.common import MockConfigEntry
 from tests.typing import WebSocketGenerator
@@ -17,9 +17,7 @@ async def test_inventory(
     hass_ws_client: WebSocketGenerator,
 ) -> None:
     """Return descriptors without exposing the API key."""
-    mock_connection.async_subscribe.side_effect = lambda callback, disconnected: (
-        callback(inventory())
-    )
+    mock_connection.devices = {DESCRIPTOR.dev_eui: DESCRIPTOR}
     assert await hass.config_entries.async_setup(provider_entry.entry_id)
     client = await hass_ws_client(hass)
     await client.send_json(

@@ -7,12 +7,9 @@ from lorawan_connection import (
     Connection,
     DeviceDescriptor,
     DeviceEvent,
-    DeviceEventData,
     Downlink,
-    DownlinkError,
     EventType,
     Unsubscribe,
-    notify,
 )
 from lorawan_connection.chirpstack import (
     AuthenticationError,
@@ -27,7 +24,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
-from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_APPLICATION_IDS,
@@ -43,13 +39,32 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 VENDORS = {744: "sensecap", 676: "dragino"}
 
 
-@dataclass
-class Subscriber:
-    """One vendor consumer."""
+class _ConsumerConnection:
+    """Expose device operations without access to transport lifecycle."""
 
-    vendor_ids: frozenset[int]
-    callback: Callable[[DeviceEvent], None]
-    on_disconnect: Callable[[], None]
+    __slots__ = ("_backend",)
+
+    def __init__(self, backend: ChirpStackConnection) -> None:
+        self._backend = backend
+
+    async def async_subscribe(
+        self,
+        *,
+        vendor_ids: frozenset[int],
+        callback: Callable[[DeviceEvent], None],
+    ) -> Unsubscribe:
+        """Deliver existing devices and live events for the selected vendors."""
+        return await self._backend.async_subscribe(
+            vendor_ids=vendor_ids, callback=callback
+        )
+
+    def on_disconnect(self, callback: Callable[[], None]) -> Unsubscribe:
+        """Listen for connection loss without controlling the connection."""
+        return self._backend.on_disconnect(callback)
+
+    async def async_send_downlink(self, downlink: Downlink) -> str:
+        """Send a command to a device in this provider's selected applications."""
+        return await self._backend.async_send_downlink(downlink)
 
 
 @dataclass
@@ -58,8 +73,13 @@ class LoRaWANData:
 
     connection: ChirpStackConnection
     devices: dict[str, DeviceDescriptor] = field(default_factory=dict)
-    subscribers: list[Subscriber] = field(default_factory=list)
+    consumer: Connection = field(init=False)
+    unsubscribe_disconnect: Unsubscribe | None = None
     discovered: set[str] = field(default_factory=set)
+
+    def __post_init__(self) -> None:
+        """Create the restricted consumer interface."""
+        self.consumer = _ConsumerConnection(self.connection)
 
 
 type LoRaWANConfigEntry = ConfigEntry[LoRaWANData]
@@ -78,7 +98,7 @@ def get_connection(hass: HomeAssistant, provider_entry_id: str) -> Connection:
         or not entry.runtime_data.connection.available
     ):
         raise ConnectionUnavailable("LoRaWAN provider is not connected")
-    return entry.runtime_data.connection
+    return entry.runtime_data.consumer
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -100,8 +120,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: LoRaWANConfigEntry) -> b
 
     @core.callback
     def handle_event(event: DeviceEvent) -> None:
-        previous = runtime.devices.get(event.dev_eui)
-        descriptor = event.descriptor or previous
+        descriptor = event.descriptor or runtime.devices.get(event.dev_eui)
         if descriptor is None:
             return
         if event.type == EventType.REMOVED:
@@ -124,35 +143,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: LoRaWANConfigEntry) -> b
                     ),
                     f"Discover {domain}",
                 )
-        for subscriber in tuple(runtime.subscribers):
-            if (
-                previous
-                and previous.vendor_id in subscriber.vendor_ids
-                and descriptor.vendor_id not in subscriber.vendor_ids
-            ):
-                notify(
-                    [subscriber.callback],
-                    DeviceEventData(
-                        event.network_id,
-                        event.dev_eui,
-                        EventType.REMOVED,
-                        event.received_at,
-                        previous,
-                    ),
-                )
-            elif descriptor.vendor_id in subscriber.vendor_ids:
-                notify([subscriber.callback], event)
-
-    @core.callback
-    def disconnected(error: Exception) -> None:
-        # The connection marks itself unavailable before invoking this callback.
-        for subscriber in tuple(runtime.subscribers):
-            subscriber.on_disconnect()
-        runtime.subscribers.clear()
-        hass.config_entries.async_schedule_reload(entry.entry_id)
 
     try:
-        await connection.async_subscribe(handle_event, disconnected)
+        await connection.async_connect()
+        runtime.unsubscribe_disconnect = connection.on_disconnect(
+            lambda: hass.config_entries.async_schedule_reload(entry.entry_id)
+        )
+        entry.async_on_unload(runtime.unsubscribe_disconnect)
+        entry.async_on_unload(
+            await connection.async_subscribe(vendor_ids=None, callback=handle_event)
+        )
     except AuthenticationError as error:
         raise ConfigEntryAuthFailed from error
     except ConnectionUnavailable as error:
@@ -160,71 +160,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: LoRaWANConfigEntry) -> b
     return True
 
 
-async def async_subscribe(
-    hass: HomeAssistant,
-    *,
-    provider_entry_id: str,
-    vendor_ids: frozenset[int],
-    callback: Callable[[DeviceEvent], None],
-    on_disconnect: Callable[[], None],
-) -> Unsubscribe:
-    """Feed existing matching descriptors and then live vendor events."""
-    entry: LoRaWANConfigEntry | None = hass.config_entries.async_get_entry(
-        provider_entry_id
-    )
-    if (
-        entry is None
-        or entry.domain != DOMAIN
-        or not hasattr(entry, "runtime_data")
-        or not entry.runtime_data.connection.available
-    ):
-        raise ConnectionUnavailable("LoRaWAN provider is not connected")
-    runtime = entry.runtime_data
-    subscriber = Subscriber(vendor_ids, callback, on_disconnect)
-    runtime.subscribers.append(subscriber)
-    for descriptor in tuple(runtime.devices.values()):
-        if descriptor.vendor_id in vendor_ids:
-            notify(
-                [callback],
-                DeviceEventData(
-                    descriptor.network_id,
-                    descriptor.dev_eui,
-                    EventType.ADDED,
-                    dt_util.utcnow(),
-                    descriptor,
-                ),
-            )
-
-    def unsubscribe() -> None:
-        if subscriber in runtime.subscribers:
-            runtime.subscribers.remove(subscriber)
-
-    return unsubscribe
-
-
-async def async_send_downlink(
-    hass: HomeAssistant, provider_entry_id: str, downlink: Downlink
-) -> str:
-    """Queue a command through the configured provider's selected inventory."""
-    entry: LoRaWANConfigEntry | None = hass.config_entries.async_get_entry(
-        provider_entry_id
-    )
-    if (
-        entry is None
-        or entry.domain != DOMAIN
-        or not hasattr(entry, "runtime_data")
-        or not entry.runtime_data.connection.available
-    ):
-        raise DownlinkError("LoRaWAN provider is not connected")
-    if downlink.dev_eui not in entry.runtime_data.devices:
-        raise DownlinkError("Device is not in this LoRaWAN provider")
-    return await entry.runtime_data.connection.async_send_downlink(downlink)
-
-
 async def async_unload_entry(hass: HomeAssistant, entry: LoRaWANConfigEntry) -> bool:
     """Close transport and notify dependent entries."""
+    if entry.runtime_data.unsubscribe_disconnect is not None:
+        entry.runtime_data.unsubscribe_disconnect()
     await entry.runtime_data.connection.close()
-    for subscriber in tuple(entry.runtime_data.subscribers):
-        subscriber.on_disconnect()
-    entry.runtime_data.subscribers.clear()
     return True

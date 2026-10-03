@@ -28,25 +28,14 @@ async def test_sensor_lifecycle(hass: HomeAssistant) -> None:
     entry.add_to_hass(hass)
     stop = Mock()
 
-    async def subscribe(
-        hass: HomeAssistant,
-        provider_entry_id: str,
-        vendor_ids: frozenset[int],
-        callback: Mock,
-        on_disconnect: Mock,
-    ) -> Mock:
+    async def subscribe(*, vendor_ids: frozenset[int], callback: Mock) -> Mock:
         callback(inventory())
         return stop
 
-    with (
-        patch(
-            "homeassistant.components.sensecap.lorawan.get_connection",
-            return_value=Mock(network_id="network"),
-        ),
-        patch(
-            "homeassistant.components.sensecap.lorawan.async_subscribe",
-            side_effect=subscribe,
-        ),
+    connection = Mock(async_subscribe=AsyncMock(side_effect=subscribe))
+    with patch(
+        "homeassistant.components.sensecap.lorawan.get_connection",
+        return_value=connection,
     ):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
@@ -83,8 +72,8 @@ async def test_provider_unavailable(hass: HomeAssistant) -> None:
     )
     entry.add_to_hass(hass)
     with patch(
-        "homeassistant.components.sensecap.lorawan.async_subscribe",
-        AsyncMock(side_effect=ConnectionUnavailable),
+        "homeassistant.components.sensecap.lorawan.get_connection",
+        side_effect=ConnectionUnavailable,
     ):
         assert not await hass.config_entries.async_setup(entry.entry_id)
     assert entry.state == ConfigEntryState.SETUP_RETRY

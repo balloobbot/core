@@ -47,9 +47,7 @@ async def setup_dragino(
 ) -> AsyncGenerator[tuple[MockConfigEntry, Callable]]:
     """Discover the vendor through provider inventory and confirm the collection."""
     mock_connection.async_send_downlink = AsyncMock(return_value="queue-id")
-    mock_connection.async_subscribe.side_effect = lambda callback, disconnected: (
-        callback(inventory())
-    )
+    mock_connection.devices = {DESCRIPTOR.dev_eui: DESCRIPTOR}
     assert await hass.config_entries.async_setup(provider_entry.entry_id)
     await hass.async_block_till_done()
     flows = [
@@ -62,7 +60,7 @@ async def setup_dragino(
     result = await hass.config_entries.flow.async_configure(flow["flow_id"], {})
     vendor = result["result"]
     await hass.async_block_till_done()
-    emit = mock_connection.async_subscribe.call_args.args[0]
+    emit = mock_connection._emit
 
     async def send(downlink: object) -> str:
         emit(
@@ -77,7 +75,7 @@ async def setup_dragino(
         return "queue-id"
 
     mock_connection.async_send_downlink.side_effect = send
-    yield vendor, mock_connection.async_subscribe.call_args.args[0]
+    yield vendor, mock_connection._emit
     await hass.config_entries.async_unload(vendor.entry_id)
     await hass.config_entries.async_unload(provider_entry.entry_id)
 

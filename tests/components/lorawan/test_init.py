@@ -3,7 +3,7 @@
 from dataclasses import replace
 from unittest.mock import AsyncMock, Mock, patch
 
-from lorawan_connection import Downlink, DownlinkError, EventType
+from lorawan_connection import Downlink, EventType
 from lorawan_connection.chirpstack import AuthenticationError, ConnectionUnavailable
 import pytest
 
@@ -20,28 +20,32 @@ async def test_provider_subscription(
     hass: HomeAssistant, provider_entry: MockConfigEntry, mock_connection: Mock
 ) -> None:
     """Initial devices and later activity share the same vendor subscription."""
-    mock_connection.async_subscribe.side_effect = lambda callback, disconnected: (
-        callback(inventory())
-    )
+    mock_connection.devices = {DESCRIPTOR.dev_eui: DESCRIPTOR}
     with patch.object(hass.config_entries.flow, "async_init", AsyncMock()) as discovery:
         assert await hass.config_entries.async_setup(provider_entry.entry_id)
-        assert lorawan.get_connection(hass, provider_entry.entry_id) is mock_connection
+        connection = lorawan.get_connection(hass, provider_entry.entry_id)
+        assert connection is not mock_connection
+        assert {name for name in dir(connection) if not name.startswith("_")} == {
+            "async_subscribe",
+            "async_send_downlink",
+            "on_disconnect",
+        }
         await hass.async_block_till_done()
         discovery.assert_awaited_once()
         consumer, disconnected = Mock(), Mock()
-        stop = await lorawan.async_subscribe(
-            hass,
-            provider_entry_id=provider_entry.entry_id,
+        unsubscribe_disconnect = connection.on_disconnect(disconnected)
+        unsubscribe = await connection.async_subscribe(
             vendor_ids=frozenset({744}),
             callback=consumer,
-            on_disconnect=disconnected,
         )
         consumer.assert_called_once()
-        callback = mock_connection.async_subscribe.call_args.args[0]
-        callback(inventory(replace(DESCRIPTOR, vendor_id=1), EventType.UPDATED))
+        mock_connection._emit(
+            inventory(replace(DESCRIPTOR, vendor_id=1), EventType.UPDATED), DESCRIPTOR
+        )
         assert consumer.call_args.args[0].type == EventType.REMOVED
-        stop()
-        stop()
+        unsubscribe()
+        unsubscribe()
+        unsubscribe_disconnect()
         await hass.config_entries.async_unload(provider_entry.entry_id)
         disconnected.assert_not_called()
         mock_connection.close.assert_awaited_once()
@@ -62,7 +66,7 @@ async def test_setup_failure(
     state: ConfigEntryState,
 ) -> None:
     """Connection failures retry; invalid credentials start reauthentication."""
-    mock_connection.async_subscribe.side_effect = error
+    mock_connection.async_connect.side_effect = error
     assert not await hass.config_entries.async_setup(provider_entry.entry_id)
     assert provider_entry.state == state
 
@@ -75,14 +79,6 @@ async def test_unavailable_subscription(
         lorawan.get_connection(hass, provider_entry.entry_id)
     with pytest.raises(ConnectionUnavailable):
         lorawan.get_connection(hass, "missing")
-    with pytest.raises(ConnectionUnavailable):
-        await lorawan.async_subscribe(
-            hass,
-            provider_entry_id=provider_entry.entry_id,
-            vendor_ids=frozenset({744}),
-            callback=Mock(),
-            on_disconnect=Mock(),
-        )
 
 
 async def test_disconnect(
@@ -90,50 +86,28 @@ async def test_disconnect(
 ) -> None:
     """Unavailable is visible before consumer reload and no stale replay."""
     assert await hass.config_entries.async_setup(provider_entry.entry_id)
+    connection = lorawan.get_connection(hass, provider_entry.entry_id)
     disconnected = Mock()
-    await lorawan.async_subscribe(
-        hass,
-        provider_entry_id=provider_entry.entry_id,
-        vendor_ids=frozenset({744}),
-        callback=Mock(),
-        on_disconnect=disconnected,
-    )
-    mock_connection.available = False
-    with pytest.raises(ConnectionUnavailable):
-        lorawan.get_connection(hass, provider_entry.entry_id)
+    connection.on_disconnect(disconnected)
+    await connection.async_subscribe(vendor_ids=frozenset({744}), callback=Mock())
     with patch.object(hass.config_entries, "async_schedule_reload") as reload:
-        mock_connection.async_subscribe.call_args.args[1](ConnectionUnavailable())
-        disconnected.assert_called_once()
+        mock_connection._failed(ConnectionUnavailable())
+        disconnected.assert_called_once_with()
         reload.assert_called_once_with(provider_entry.entry_id)
     with pytest.raises(ConnectionUnavailable):
-        await lorawan.async_subscribe(
-            hass,
-            provider_entry_id=provider_entry.entry_id,
-            vendor_ids=frozenset({744}),
-            callback=Mock(),
-            on_disconnect=Mock(),
-        )
+        lorawan.get_connection(hass, provider_entry.entry_id)
+    with pytest.raises(ConnectionUnavailable):
+        await connection.async_subscribe(vendor_ids=frozenset({744}), callback=Mock())
     await hass.config_entries.async_unload(provider_entry.entry_id)
 
 
-@pytest.mark.parametrize("condition", ["missing", "offline", "unknown"])
-async def test_downlink_requires_available_inventory(
-    hass: HomeAssistant,
-    provider_entry: MockConfigEntry,
-    mock_connection: Mock,
-    condition: str,
+async def test_downlink_uses_shared_connection(
+    hass: HomeAssistant, provider_entry: MockConfigEntry, mock_connection: Mock
 ) -> None:
-    """Never send a command through a missing provider or to an unknown device."""
+    """The consumer facade delegates commands to the provider transport."""
     assert await hass.config_entries.async_setup(provider_entry.entry_id)
-    mock_connection.async_send_downlink = AsyncMock()
-    provider_id = provider_entry.entry_id
-    if condition == "missing":
-        provider_id = "missing"
-    elif condition == "offline":
-        mock_connection.available = False
-    with pytest.raises(DownlinkError):
-        await lorawan.async_send_downlink(
-            hass, provider_id, Downlink(DESCRIPTOR.dev_eui, 2, b"command")
-        )
-    mock_connection.async_send_downlink.assert_not_awaited()
+    connection = lorawan.get_connection(hass, provider_entry.entry_id)
+    downlink = Downlink(DESCRIPTOR.dev_eui, 2, b"command")
+    assert await connection.async_send_downlink(downlink) == "queue-id"
+    mock_connection.async_send_downlink.assert_awaited_once_with(downlink)
     await hass.config_entries.async_unload(provider_entry.entry_id)
