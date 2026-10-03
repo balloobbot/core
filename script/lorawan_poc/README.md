@@ -4,7 +4,7 @@ This development branch requires the unreleased `lorawan-connection` 0.7.0.
 The command ACK behavior below is tested with a local build. Use `lorawan-poc`
 for the version whose dependencies are available on PyPI.
 
-This worktree adds `lorawan` and `sensecap` integrations. It connects to an
+This worktree adds `lorawan`, `sensecap`, and `dragino` integrations. It connects to an
 existing ChirpStack 4.19 server and discovers provisioned devices. The first
 SenseCAP model is S2101, with temperature and humidity sensors. Provisioning,
 BLE, gateway setup, a managed HA app, and a custom frontend are later phases.
@@ -198,7 +198,7 @@ uv run --no-sync python script/lorawan_poc/build_simulators.py /path/to/chirpsta
 
 The builder uses a temporary Go source overlay to add a payload callback and
 confirmed-downlink ACKs to the upstream simulator. The checkout remains unchanged. The Dragino simulator receives
-encrypted downlinks, changes its two emulated relays, and reports their states in
+encrypted downlinks, changes its emulated outputs, and includes input readings in
 subsequent encrypted uplinks. See `SIMULATOR_LICENSE` for the upstream MIT license.
 The broker exists between the simulated gateway and ChirpStack; HA uses gRPC.
 
@@ -216,29 +216,34 @@ Publish the SenseCAP library, add official integration documentation and brands,
 the vendor-discovery registration mechanism, and test actual SenseCAP hardware
 before an upstream contribution.
 
-## Dragino relay example
+## Dragino example
 
-Seeed sells the Dragino LT-22222-L, which has two relay outputs. It is a Dragino
-product and uses the separate Dragino integration. It already appears in the
+The Dragino LT-22222-L is available from Seeed. It uses the separate Dragino
+integration. It already appears in the
 upstream ChirpStack catalog; no local catalog entry is needed.
 
 1. Provision an LT-22222-L in ChirpStack using its global **Class C** profile for
    the device's region. Configure the hardware for Class C and working mode 1–5.
 2. Select its application in the LoRaWAN integration. Confirm the discovered Dragino
    integration. One collection contains all supported Dragino devices on that network.
-3. Each controller exposes two switch entities, Relay 1 and Relay 2. They start
-   unknown until an uplink reports their state.
-4. Turn a relay on or off. The library encodes FPort 2 commands and passes them through
+3. The integration creates switches, binary sensors, and sensors for the model.
+   Values start unknown until an uplink reports them.
+4. Turn an output on or off. The library encodes FPort 2 commands and passes them through
    the LoRaWAN provider to ChirpStack's public enqueue API. It requests a confirmed
-   downlink and waits up to 30 seconds for the device ACK. The other relay is unchanged.
+   downlink and waits up to 30 seconds for the device ACK. The other outputs are unchanged.
 5. HA updates the switch after a device report. Queue acceptance and protocol
    acknowledgements do not imply the physical relay changed.
 
 Read-only keys can discover and monitor relays. An attempted write reports a clear
 error; replace the provider key with one that has tenant write access to enable control.
 Commands expire after 30 seconds in the server queue. There are no automatic command
-retries or queue flushes. Analog/digital sensor entities and other Dragino models are
-deferred; this POC implements the switch platform.
+retries or queue flushes.
+
+Voltage readings use volts and current readings use milliamperes. Digital inputs
+report high/low in mode 1; counting modes expose the corresponding counters.
+Mode changes clear readings no longer reported. Digital output switches are on
+when their active-low output is enabled. Trigger-only reports do not replace input
+measurements or output states.
 
 Run the full command cycle against the disposable server:
 
@@ -246,8 +251,8 @@ Run the full command cycle against the disposable server:
 PYTHONPATH=. uv run --no-sync python -m pytest -p tests.conftest script/lorawan_poc/real_dragino.py -s
 ```
 
-This tests both relays on and off through real encrypted downlinks, waits for their ACKs, reports their
-resulting states, rejects a real read-only key, recovers after a TCP outage, and
+This tests all output commands through encrypted downlinks, waits for ACKs, checks
+input readings and resulting output states, rejects a read-only key, recovers after a TCP outage, and
 removes models when the server device is deleted. Run it separately from the SenseCAP
 radio test because both use the same simulated gateway ID.
 

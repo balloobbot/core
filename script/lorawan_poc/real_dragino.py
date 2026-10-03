@@ -174,6 +174,12 @@ async def test_real_dragino_stack(hass: HomeAssistant) -> None:
                 while hass.states.get("switch.workshop_relay_1").state != "off":
                     await asyncio.sleep(0.2)
         assert hass.states.get("switch.workshop_relay_2").state == "off"
+        assert hass.states.get("sensor.workshop_voltage_1").state == "1.195"
+        assert hass.states.get("sensor.workshop_voltage_2").state == "1.196"
+        assert hass.states.get("sensor.workshop_current_1").state == "4.88"
+        assert hass.states.get("sensor.workshop_current_2").state == "4.864"
+        assert hass.states.get("binary_sensor.workshop_digital_input_1").state == "on"
+        assert hass.states.get("binary_sensor.workshop_digital_input_2").state == "off"
         with pytest.raises(HomeAssistantError, match="write permission"):
             await hass.services.async_call(
                 "switch",
@@ -197,6 +203,10 @@ async def test_real_dragino_stack(hass: HomeAssistant) -> None:
             ("switch.workshop_relay_2", "turn_on", "on"),
             ("switch.workshop_relay_1", "turn_off", "off"),
             ("switch.workshop_relay_2", "turn_off", "off"),
+            ("switch.workshop_digital_output_1", "turn_on", "on"),
+            ("switch.workshop_digital_output_2", "turn_on", "on"),
+            ("switch.workshop_digital_output_1", "turn_off", "off"),
+            ("switch.workshop_digital_output_2", "turn_off", "off"),
         ]:
             await hass.services.async_call(
                 "switch", action, {"entity_id": entity}, blocking=True
@@ -205,10 +215,19 @@ async def test_real_dragino_stack(hass: HomeAssistant) -> None:
                 while hass.states.get(entity).state != expected:
                     await asyncio.sleep(0.2)
         log = await asyncio.to_thread((SERVER_DIR / "simulator_dragino.log").read_text)
-        for payload in ("030111", "031101", "030011", "031100"):
+        for payload in (
+            "030111",
+            "031101",
+            "030011",
+            "031100",
+            "02011111",
+            "02110111",
+            "02001111",
+            "02110011",
+        ):
             assert payload in log, f"Simulator did not receive {payload}"
         print(
-            "PASS: both HA switches await device ACKs for encrypted downlinks and receive relay-state uplinks"
+            "PASS: HA reads all analog and digital inputs; all outputs await device ACKs and receive state reports"
         )
         await proxy.close()
         async with asyncio.timeout(10):

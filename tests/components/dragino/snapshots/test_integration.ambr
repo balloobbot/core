@@ -1,0 +1,86 @@
+# serializer version: 1
+# name: test_input_entities[analog]
+  dict({
+    'binary_sensor.workshop_digital_input_1': 'on',
+    'binary_sensor.workshop_digital_input_2': 'off',
+    'sensor.workshop_current_1': '4.88',
+    'sensor.workshop_current_2': '4.864',
+    'sensor.workshop_digital_count_1': 'unknown',
+    'sensor.workshop_digital_count_2': 'unknown',
+    'sensor.workshop_voltage_1': '1.195',
+    'sensor.workshop_voltage_2': '1.196',
+    'sensor.workshop_voltage_count_1': 'unknown',
+    'switch.workshop_digital_output_1': 'on',
+    'switch.workshop_digital_output_2': 'off',
+    'switch.workshop_relay_1': 'on',
+    'switch.workshop_relay_2': 'off',
+  })
+# ---
+# name: test_input_entities[count_and_current]
+  dict({
+    'binary_sensor.workshop_digital_input_1': 'unknown',
+    'binary_sensor.workshop_digital_input_2': 'unknown',
+    'sensor.workshop_current_1': '4.88',
+    'sensor.workshop_current_2': '4.864',
+    'sensor.workshop_digital_count_1': '2147483649',
+    'sensor.workshop_digital_count_2': 'unknown',
+    'sensor.workshop_voltage_1': 'unknown',
+    'sensor.workshop_voltage_2': 'unknown',
+    'sensor.workshop_voltage_count_1': 'unknown',
+    'switch.workshop_digital_output_1': 'off',
+    'switch.workshop_digital_output_2': 'on',
+    'switch.workshop_relay_1': 'off',
+    'switch.workshop_relay_2': 'off',
+  })
+# ---
+# name: test_input_entities[digital_counts]
+  dict({
+    'binary_sensor.workshop_digital_input_1': 'unknown',
+    'binary_sensor.workshop_digital_input_2': 'unknown',
+    'sensor.workshop_current_1': 'unknown',
+    'sensor.workshop_current_2': 'unknown',
+    'sensor.workshop_digital_count_1': '4294967295',
+    'sensor.workshop_digital_count_2': '2147483649',
+    'sensor.workshop_voltage_1': 'unknown',
+    'sensor.workshop_voltage_2': 'unknown',
+    'sensor.workshop_voltage_count_1': 'unknown',
+    'switch.workshop_digital_output_1': 'on',
+    'switch.workshop_digital_output_2': 'on',
+    'switch.workshop_relay_1': 'on',
+    'switch.workshop_relay_2': 'on',
+  })
+# ---
+# name: test_input_entities[mixed]
+  dict({
+    'binary_sensor.workshop_digital_input_1': 'unknown',
+    'binary_sensor.workshop_digital_input_2': 'unknown',
+    'sensor.workshop_current_1': '4.88',
+    'sensor.workshop_current_2': 'unknown',
+    'sensor.workshop_digital_count_1': '65535',
+    'sensor.workshop_digital_count_2': 'unknown',
+    'sensor.workshop_voltage_1': '1.195',
+    'sensor.workshop_voltage_2': '1.196',
+    'sensor.workshop_voltage_count_1': 'unknown',
+    'switch.workshop_digital_output_1': 'off',
+    'switch.workshop_digital_output_2': 'off',
+    'switch.workshop_relay_1': 'on',
+    'switch.workshop_relay_2': 'off',
+  })
+# ---
+# name: test_input_entities[voltage_count]
+  dict({
+    'binary_sensor.workshop_digital_input_1': 'unknown',
+    'binary_sensor.workshop_digital_input_2': 'unknown',
+    'sensor.workshop_current_1': 'unknown',
+    'sensor.workshop_current_2': 'unknown',
+    'sensor.workshop_digital_count_1': '2147483649',
+    'sensor.workshop_digital_count_2': 'unknown',
+    'sensor.workshop_voltage_1': 'unknown',
+    'sensor.workshop_voltage_2': 'unknown',
+    'sensor.workshop_voltage_count_1': '4294967295',
+    'switch.workshop_digital_output_1': 'off',
+    'switch.workshop_digital_output_2': 'off',
+    'switch.workshop_relay_1': 'off',
+    'switch.workshop_relay_2': 'on',
+  })
+# ---

@@ -15,7 +15,7 @@ from ._vendor.dragino_lorawan import VENDOR_ID, DraginoDevices
 DOMAIN = "dragino"
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 type DraginoConfigEntry = ConfigEntry[DraginoDevices]
-PLATFORMS = [Platform.SWITCH]
+PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR, Platform.SWITCH]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: DraginoConfigEntry) -> bool:

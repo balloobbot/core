@@ -12,7 +12,17 @@
     }
   },
   "entity": {
+    "binary_sensor": {
+      "digital_input": { "name": "Digital input {channel}" }
+    },
+    "sensor": {
+      "current": { "name": "Current {channel}" },
+      "digital_count": { "name": "Digital count {channel}" },
+      "voltage": { "name": "Voltage {channel}" },
+      "voltage_count": { "name": "Voltage count {channel}" }
+    },
     "switch": {
+      "digital_output": { "name": "Digital output {channel}" },
       "relay": {
         "name": "Relay {channel}"
       }

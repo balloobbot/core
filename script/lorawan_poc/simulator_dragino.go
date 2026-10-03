@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"sync"
 	"sync/atomic"
@@ -13,11 +14,11 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Emulate two Dragino relays after OTAA; all commands arrive as encrypted downlinks.
+// Emulate LT-22222-L I/O after OTAA; commands arrive as encrypted downlinks.
 func main() {
 	gatewayID := lorawan.EUI64{1, 1, 1, 1, 1, 1, 1, 1}
 	devEUI := lorawan.EUI64{2, 1, 1, 1, 1, 1, 1, 2}
-	var relays atomic.Uint32
+	var outputs atomic.Uint32
 	appKey := lorawan.AES128Key{3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}
 
 	var wg sync.WaitGroup
@@ -42,7 +43,11 @@ func main() {
 		simulator.WithUplinkPayload(false, 2, nil),
 		simulator.WithUplinkPayloadFunc(func() []byte {
 			data := make([]byte, 11)
-			data[8] = byte(relays.Load())
+			binary.BigEndian.PutUint16(data[0:2], 1195)
+			binary.BigEndian.PutUint16(data[2:4], 1196)
+			binary.BigEndian.PutUint16(data[4:6], 4880)
+			binary.BigEndian.PutUint16(data[6:8], 4864)
+			data[8] = byte(outputs.Load()) | 0x08
 			data[10] = 0x41
 			return data
 		}),
@@ -67,21 +72,33 @@ func main() {
 				"data":      hex.EncodeToString(data),
 			}).Info("WithDownlinkHandlerFunc triggered")
 
-			if fPort == 2 && len(data) == 3 && data[0] == 0x03 {
-				state := relays.Load()
-				for index, mask := range []uint32{0x80, 0x40} {
+			if fPort != 2 || len(data) < 3 {
+				return nil
+			}
+			var masks []uint32
+			switch {
+			case len(data) == 3 && data[0] == 0x03:
+				masks = []uint32{0x80, 0x40}
+			case len(data) == 4 && data[0] == 0x02:
+				masks = []uint32{0x01, 0x02}
+			default:
+				return nil
+			}
+			{
+				state := outputs.Load()
+				for index, mask := range masks {
 					switch data[index+1] {
 					case 0x00:
 						state &^= mask
 					case 0x01:
 						state |= mask
 					case 0x11:
-						// Leave the other relay unchanged.
+						// Leave the other output unchanged.
 					default:
 						return nil
 					}
 				}
-				relays.Store(state)
+				outputs.Store(state)
 			}
 			return nil
 		}),
