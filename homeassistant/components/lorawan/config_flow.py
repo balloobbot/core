@@ -15,7 +15,7 @@ from homeassistant.helpers.selector import (
     SelectSelectorConfig,
 )
 
-from ._vendor.chirpstack_connection import ChirpStackConnection, ConnectionUnavailable
+from .chirpstack import ChirpStackConnection, ConnectionUnavailable
 from .const import (
     CONF_APPLICATION_IDS,
     CONF_ENDPOINT,

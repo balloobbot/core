@@ -6,11 +6,11 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from homeassistant.components import lorawan
-from homeassistant.components.lorawan._vendor.chirpstack_connection import (
+from homeassistant.components.lorawan._vendor.lorawan_connection import EventType
+from homeassistant.components.lorawan.chirpstack import (
     AuthenticationError,
     ConnectionUnavailable,
 )
-from homeassistant.components.lorawan._vendor.lorawan_connection import EventType
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 

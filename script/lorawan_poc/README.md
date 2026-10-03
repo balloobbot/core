@@ -44,14 +44,16 @@ integration/device/entity pages show the provider, collection, and sensors.
 
 - `homeassistant/components/lorawan/_vendor/lorawan_connection`: common event
   Protocols, fixture dataclasses, and the reusable `DeviceCollection` base.
-- `homeassistant/components/lorawan/_vendor/chirpstack_connection`: gRPC adapter,
+- `homeassistant/components/lorawan/chirpstack.py`: integration-owned API
+  helpers for the generated gRPC client,
   complete inventory polling, individual event streams, and one subscription.
 - `homeassistant/components/sensecap/_vendor/sensecap_lorawan`: S2101 decoding,
   model selection, partial state, and state observers.
 - `tests/components/lorawan` and `tests/components/sensecap`: isolated tests.
 
-The three new libraries are vendored. Their imports use their temporary Core
-namespace; they otherwise do not use HA APIs. Generated ChirpStack bindings,
+The shared LoRaWAN and SenseCAP libraries are vendored. Their imports use their
+temporary Core namespace; they otherwise do not use HA APIs. ChirpStack API
+helpers live inside the LoRaWAN integration. Generated ChirpStack bindings,
 gRPC, and protobuf remain ordinary dependencies. No JavaScript decoder runs in
 HA. The native decoder follows Seeed's seven-byte record layout and the catalog
 fixture. It validates length and S2101 ranges, but does not validate the two-byte

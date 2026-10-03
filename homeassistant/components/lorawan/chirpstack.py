@@ -1,9 +1,5 @@
 """ChirpStack gRPC inventory plus live events behind one subscription."""
 
-
-# Portable vendored library: no HA time utility dependency.
-# pylint: disable=home-assistant-enforce-utcnow
-
 import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
@@ -16,7 +12,9 @@ from google.protobuf.json_format import Parse, ParseError
 from google.protobuf.message import Message
 import grpc
 
-from ..lorawan_connection import (
+from homeassistant.util import dt as dt_util
+
+from ._vendor.lorawan_connection import (
     DeviceDescriptor,
     DeviceEvent,
     DeviceEventData,
@@ -40,10 +38,12 @@ class Page[T](Protocol):
     """Read-only list response shape shared by the generated services."""
 
     @property
-    def total_count(self) -> int: ...
+    def total_count(self) -> int:
+        """Return the total number of matching items."""
 
     @property
-    def result(self) -> Sequence[T]: ...
+    def result(self) -> Sequence[T]:
+        """Return the items in this page."""
 
 
 class AuthenticationError(Exception):
@@ -117,7 +117,7 @@ class ChirpStackConnection:
         self._refresh: asyncio.Task | None = None
         self._lock = asyncio.Lock()
         self._closed = False
-        self._since = datetime.now(UTC)
+        self._since = dt_util.utcnow()
         self._pending_unknown = 0
         self._device_api = api.DeviceServiceStub(self.channel)
         self._profile_api = api.DeviceProfileServiceStub(self.channel)
@@ -252,7 +252,7 @@ class ChirpStackConnection:
         self, kind: EventType, descriptor: DeviceDescriptor
     ) -> DeviceEventData:
         return DeviceEventData(
-            self.network_id, descriptor.dev_eui, kind, datetime.now(UTC), descriptor
+            self.network_id, descriptor.dev_eui, kind, dt_util.utcnow(), descriptor
         )
 
     async def refresh(self) -> None:

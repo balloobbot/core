@@ -11,15 +11,15 @@ from google.protobuf.message import Message
 import grpc
 import pytest
 
-from homeassistant.components.lorawan._vendor.chirpstack_connection import (
+from homeassistant.components.lorawan._vendor.lorawan_connection import (
+    DeviceEventData,
+    EventType,
+)
+from homeassistant.components.lorawan.chirpstack import (
     AuthenticationError,
     ChirpStackConnection,
     ConnectionUnavailable,
     connection_error,
-)
-from homeassistant.components.lorawan._vendor.lorawan_connection import (
-    DeviceEventData,
-    EventType,
 )
 from homeassistant.util import dt as dt_util
 
