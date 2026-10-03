@@ -428,6 +428,8 @@ CLAUDE.md @home-assistant/core
 /tests/components/dormakaba_dkey/ @emontnemery
 /homeassistant/components/downloader/ @erwindouna
 /tests/components/downloader/ @erwindouna
+/homeassistant/components/dragino/ @balloob
+/tests/components/dragino/ @balloob
 /homeassistant/components/dremel_3d_printer/ @tkdrob
 /tests/components/dremel_3d_printer/ @tkdrob
 /homeassistant/components/drop_connect/ @ChandlerSystems @pfrazer

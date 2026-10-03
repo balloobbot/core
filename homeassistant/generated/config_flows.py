@@ -174,6 +174,7 @@ FLOWS = {
         "doorbird",
         "dormakaba_dkey",
         "downloader",
+        "dragino",
         "dremel_3d_printer",
         "drop_connect",
         "dropbox",

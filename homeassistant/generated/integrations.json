@@ -1529,6 +1529,12 @@
       "config_flow": true,
       "single_config_entry": true
     },
+    "dragino": {
+      "name": "Dragino",
+      "integration_type": "hub",
+      "config_flow": true,
+      "iot_class": "local_push"
+    },
     "dremel_3d_printer": {
       "name": "Dremel 3D Printer",
       "integration_type": "device",
