@@ -1,5 +1,6 @@
 """Relay entities backed by Dragino library models."""
 
+from asyncio import timeout
 from typing import Any, override
 
 from lorawan_connection import DownlinkError
@@ -90,6 +91,11 @@ class DraginoRelay(SwitchEntity):
 
     async def _async_set_relay(self, on: bool) -> None:
         try:
-            await self.device.async_set_relay(self.channel, on)
+            async with timeout(30):
+                await self.device.async_set_relay(self.channel, on)
+        except TimeoutError as error:
+            raise HomeAssistantError(
+                "Timed out waiting for device acknowledgement"
+            ) from error
         except DownlinkError as error:
             raise HomeAssistantError(str(error)) from error

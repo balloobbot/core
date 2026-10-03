@@ -208,7 +208,7 @@ async def test_real_dragino_stack(hass: HomeAssistant) -> None:
         for payload in ("030111", "031101", "030011", "031100"):
             assert payload in log, f"Simulator did not receive {payload}"
         print(
-            "PASS: both HA switches control actual encrypted downlinks and receive matching relay-state uplinks"
+            "PASS: both HA switches await device ACKs for encrypted downlinks and receive relay-state uplinks"
         )
         await proxy.close()
         async with asyncio.timeout(10):

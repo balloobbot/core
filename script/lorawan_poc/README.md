@@ -1,5 +1,9 @@
 # LoRaWAN proof of concept
 
+This development branch requires the unreleased `lorawan-connection` 0.7.0.
+The command ACK behavior below is tested with a local build. Use `lorawan-poc`
+for the version whose dependencies are available on PyPI.
+
 This worktree adds `lorawan` and `sensecap` integrations. It connects to an
 existing ChirpStack 4.19 server and discovers provisioned devices. The first
 SenseCAP model is S2101, with temperature and humidity sensors. Provisioning,
@@ -20,7 +24,7 @@ are also available on the proposal website.
 
 1. Run `script/setup` in this worktree. For direct test runs, install the
    integration dependencies with
-   `uv pip install "lorawan-connection[chirpstack]==0.5.0"`.
+   `uv pip install "lorawan-connection[chirpstack]==0.7.0"`.
    HA installs the package and its backend dependencies from the LoRaWAN manifest when setting up the integration.
 2. On ChirpStack, import the current device-profile catalog. Assign the **global
    SenseCAP S2101 catalog profile** for the device's radio region. A custom
@@ -43,7 +47,7 @@ integration/device/entity pages show the provider, collection, and sensors.
 
 ## Source layout
 
-- Published `lorawan-connection[chirpstack]==0.5.0`: common event Protocols, fixture
+- Upcoming `lorawan-connection[chirpstack]==0.7.0`: common event Protocols, fixture
   dataclasses, and the reusable `DeviceCollection` base.
 - `lorawan_connection.chirpstack`: shared API helpers for the generated gRPC client,
   complete inventory polling, individual event streams, and one subscription.
@@ -192,8 +196,8 @@ https://github.com/brocaar/chirpstack-simulator at commit
 uv run --no-sync python script/lorawan_poc/build_simulators.py /path/to/chirpstack-simulator /tmp/lorawan-server
 ```
 
-The builder uses a temporary Go source overlay to add a payload callback to the
-upstream simulator. The checkout remains unchanged. The Dragino simulator receives
+The builder uses a temporary Go source overlay to add a payload callback and
+confirmed-downlink ACKs to the upstream simulator. The checkout remains unchanged. The Dragino simulator receives
 encrypted downlinks, changes its two emulated relays, and reports their states in
 subsequent encrypted uplinks. See `SIMULATOR_LICENSE` for the upstream MIT license.
 The broker exists between the simulated gateway and ChirpStack; HA uses gRPC.
@@ -225,7 +229,8 @@ upstream ChirpStack catalog; no local catalog entry is needed.
 3. Each controller exposes two switch entities, Relay 1 and Relay 2. They start
    unknown until an uplink reports their state.
 4. Turn a relay on or off. The library encodes FPort 2 commands and passes them through
-   the LoRaWAN provider to ChirpStack's public enqueue API. The other relay is unchanged.
+   the LoRaWAN provider to ChirpStack's public enqueue API. It requests a confirmed
+   downlink and waits up to 30 seconds for the device ACK. The other relay is unchanged.
 5. HA updates the switch after a device report. Queue acceptance and protocol
    acknowledgements do not imply the physical relay changed.
 
@@ -241,7 +246,7 @@ Run the full command cycle against the disposable server:
 PYTHONPATH=. uv run --no-sync python -m pytest -p tests.conftest script/lorawan_poc/real_dragino.py -s
 ```
 
-This tests both relays on and off through real encrypted downlinks, reports their
+This tests both relays on and off through real encrypted downlinks, waits for their ACKs, reports their
 resulting states, rejects a real read-only key, recovers after a TCP outage, and
 removes models when the server device is deleted. Run it separately from the SenseCAP
 radio test because both use the same simulated gateway ID.

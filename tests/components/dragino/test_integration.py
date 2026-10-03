@@ -1,10 +1,12 @@
 """Catalog discovery, real provider wiring, relay commands, and lifecycle."""
 
+import asyncio
 from collections.abc import AsyncGenerator, Callable
 from dataclasses import replace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 from lorawan_connection import (
+    AckData,
     DeviceDescriptor,
     DeviceEventData,
     DownlinkError,
@@ -59,6 +61,21 @@ async def setup_dragino(
     result = await hass.config_entries.flow.async_configure(flow["flow_id"], {})
     vendor = result["result"]
     await hass.async_block_till_done()
+    emit = mock_connection.async_subscribe.call_args.args[0]
+
+    async def send(downlink: object) -> str:
+        emit(
+            DeviceEventData(
+                "network",
+                DESCRIPTOR.dev_eui,
+                EventType.ACK,
+                dt_util.utcnow(),
+                data=AckData("queue-id", True),
+            )
+        )
+        return "queue-id"
+
+    mock_connection.async_send_downlink.side_effect = send
     yield vendor, mock_connection.async_subscribe.call_args.args[0]
     await hass.config_entries.async_unload(vendor.entry_id)
     await hass.config_entries.async_unload(provider_entry.entry_id)
@@ -89,6 +106,7 @@ async def test_relay_cycle(
     request = mock_connection.async_send_downlink.call_args.args[0]
     assert request.dev_eui == DESCRIPTOR.dev_eui
     assert request.data == bytes.fromhex("030111")
+    assert request.confirmed
     assert hass.states.get("switch.workshop_relay_1").state == "off"
     emit(replace(report, data=UplinkData(bytes(8) + bytes((0x80, 0, 0x41)), 2)))
     await hass.async_block_till_done()
@@ -130,6 +148,94 @@ async def test_unavailable_provider(hass: HomeAssistant) -> None:
     entry.add_to_hass(hass)
     assert not await hass.config_entries.async_setup(entry.entry_id)
     assert entry.state is ConfigEntryState.SETUP_RETRY
+
+
+async def test_command_waits_for_ack(
+    hass: HomeAssistant,
+    setup_dragino: tuple[MockConfigEntry, Callable],
+    mock_connection: Mock,
+) -> None:
+    """Reports update the model while the service waits for device acknowledgement."""
+    _, emit = setup_dragino
+    sent = asyncio.Event()
+
+    async def send(downlink: object) -> str:
+        sent.set()
+        return "queue-id"
+
+    mock_connection.async_send_downlink.side_effect = send
+    command = hass.async_create_task(
+        hass.services.async_call(
+            "switch", "turn_on", {"entity_id": "switch.workshop_relay_1"}, blocking=True
+        )
+    )
+    await sent.wait()
+    assert not command.done()
+    emit(
+        DeviceEventData(
+            "network",
+            DESCRIPTOR.dev_eui,
+            EventType.UPLINK,
+            dt_util.utcnow(),
+            data=UplinkData(bytes(8) + bytes((0x80, 0, 0x41)), 2),
+        )
+    )
+    assert hass.states.get("switch.workshop_relay_1").state == "on"
+    assert not command.done()
+    emit(
+        DeviceEventData(
+            "network",
+            DESCRIPTOR.dev_eui,
+            EventType.ACK,
+            dt_util.utcnow(),
+            data=AckData("queue-id", True),
+        )
+    )
+    await command
+
+
+async def test_command_negative_ack(
+    hass: HomeAssistant,
+    setup_dragino: tuple[MockConfigEntry, Callable],
+    mock_connection: Mock,
+) -> None:
+    """A failed acknowledgement reaches the service caller."""
+    _, emit = setup_dragino
+
+    async def send(downlink: object) -> str:
+        emit(
+            DeviceEventData(
+                "network",
+                DESCRIPTOR.dev_eui,
+                EventType.ACK,
+                dt_util.utcnow(),
+                data=AckData("queue-id", False),
+            )
+        )
+        return "queue-id"
+
+    mock_connection.async_send_downlink.side_effect = send
+    with pytest.raises(HomeAssistantError, match="did not acknowledge"):
+        await hass.services.async_call(
+            "switch", "turn_on", {"entity_id": "switch.workshop_relay_1"}, blocking=True
+        )
+    assert hass.states.get("switch.workshop_relay_1").state == "unknown"
+
+
+@pytest.mark.usefixtures("setup_dragino")
+async def test_command_timeout(hass: HomeAssistant, mock_connection: Mock) -> None:
+    """The integration applies its deadline with the standard timeout context."""
+    mock_connection.async_send_downlink.side_effect = None
+    with (
+        patch(
+            "homeassistant.components.dragino.switch.timeout",
+            return_value=asyncio.timeout(0),
+        ),
+        pytest.raises(HomeAssistantError, match="Timed out"),
+    ):
+        await hass.services.async_call(
+            "switch", "turn_on", {"entity_id": "switch.workshop_relay_1"}, blocking=True
+        )
 
 
 async def test_user_flow(hass: HomeAssistant) -> None:
