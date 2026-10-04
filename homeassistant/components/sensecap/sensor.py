@@ -18,6 +18,9 @@ from . import DOMAIN, SenseCapConfigEntry
 from ._vendor.sensecap_lorawan import S2101
 from .coordinator import SenseCapCoordinator
 
+PARALLEL_UPDATES = 0
+
+
 DESCRIPTIONS = (
     SensorEntityDescription(
         key="temperature",

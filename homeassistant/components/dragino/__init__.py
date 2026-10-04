@@ -2,8 +2,7 @@
 
 from dataclasses import dataclass, field
 
-from homeassistant.components import lorawan
-from homeassistant.components.lorawan import ConnectionUnavailable
+from homeassistant.components.lorawan import ConnectionUnavailable, get_connection
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
@@ -30,12 +29,16 @@ class DraginoData:
 async def async_setup_entry(hass: HomeAssistant, entry: DraginoConfigEntry) -> bool:
     """Forward all vendor events to one library collection."""
     try:
-        connection = lorawan.get_connection(hass, entry.data["provider_entry_id"])
+        connection = get_connection(hass, entry.data["provider_entry_id"])
     except ConnectionUnavailable as error:
         raise ConfigEntryNotReady("LoRaWAN provider is not connected") from error
     entry.async_on_unload(
         connection.on_disconnect(
-            lambda: hass.config_entries.async_schedule_reload(entry.entry_id)
+            lambda: (
+                None
+                if hass.is_stopping
+                else hass.config_entries.async_schedule_reload(entry.entry_id)
+            )
         )
     )
     devices = DraginoDevices(connection)
@@ -44,12 +47,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: DraginoConfigEntry) -> b
     @callback
     def added(device: LT22222) -> None:
         entry.runtime_data.coordinators[device.descriptor.dev_eui] = DraginoCoordinator(
-            hass, entry, device
+            hass, device
         )
 
     @callback
     def removed(device: LT22222) -> None:
-        entry.runtime_data.coordinators.pop(device.descriptor.dev_eui, None)
+        coordinator = entry.runtime_data.coordinators.pop(device.descriptor.dev_eui)
+        entry.async_create_task(
+            hass, coordinator.async_shutdown(), "Stop device coordinator"
+        )
 
     entry.async_on_unload(devices.subscribe_device_added(added))
     entry.async_on_unload(devices.subscribe_device_removed(removed))

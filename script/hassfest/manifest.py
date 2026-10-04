@@ -211,6 +211,11 @@ INTEGRATION_MANIFEST_SCHEMA = probatio.Schema(
         ),
         probatio.Optional("config_flow"): bool,
         probatio.Optional("mqtt"): [str],
+        probatio.Optional("lorawan"): probatio.All(
+            [probatio.All(int, probatio.Range(min=0, max=65535))],
+            probatio.Length(min=1),
+            probatio.Unique(),
+        ),
         probatio.Optional("zeroconf"): [
             probatio.Any(
                 str,

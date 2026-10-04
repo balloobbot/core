@@ -41,7 +41,7 @@ class LoRaWANConfigFlow(ConfigFlow, domain=DOMAIN):
             self._input[CONF_ENDPOINT],
             self._input[CONF_API_KEY],
             tenant_id=self._input.get(CONF_TENANT_ID),
-            application_ids=[],
+            application_ids=self._input.get(CONF_APPLICATION_IDS, []),
             network_id="validation",
         )
 
@@ -53,6 +53,7 @@ class LoRaWANConfigFlow(ConfigFlow, domain=DOMAIN):
         errors = {}
         if user_input is not None:
             self._input = dict(user_input)
+            self._tenants = {}
             try:
                 connection = self._connection()
             except ValueError:
@@ -67,6 +68,8 @@ class LoRaWANConfigFlow(ConfigFlow, domain=DOMAIN):
                         grpc.StatusCode.PERMISSION_DENIED,
                     ):
                         errors["base"] = "cannot_connect"
+                except ConnectionUnavailable:
+                    errors["base"] = "cannot_connect"
                 finally:
                     await connection.close()
                 if not errors:
@@ -102,7 +105,11 @@ class LoRaWANConfigFlow(ConfigFlow, domain=DOMAIN):
             except grpc.aio.AioRpcError as error:
                 errors["base"] = (
                     "invalid_auth"
-                    if error.code() == grpc.StatusCode.UNAUTHENTICATED
+                    if error.code()
+                    in (
+                        grpc.StatusCode.UNAUTHENTICATED,
+                        grpc.StatusCode.PERMISSION_DENIED,
+                    )
                     else "cannot_connect"
                 )
             except ConnectionUnavailable:
@@ -137,15 +144,25 @@ class LoRaWANConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Choose an explicit application scope."""
+        if not self._applications:
+            return self.async_abort(reason="no_applications")
+        errors = {}
         if user_input is not None:
-            self._input.update(user_input)
-            self._input[CONF_NETWORK_ID] = str(uuid4())
-            return self.async_create_entry(
-                title=self._tenants.get(self._input[CONF_TENANT_ID], "LoRaWAN"),
-                data=self._input,
-            )
+            if not user_input[CONF_APPLICATION_IDS]:
+                errors[CONF_APPLICATION_IDS] = "select_application"
+            else:
+                self._input.update(user_input)
+                if error := await self._async_validate_connection():
+                    errors["base"] = error
+                else:
+                    self._input[CONF_NETWORK_ID] = str(uuid4())
+                    return self.async_create_entry(
+                        title=self._tenants.get(self._input[CONF_TENANT_ID], "LoRaWAN"),
+                        data=self._input,
+                    )
         return self.async_show_form(
             step_id="applications",
+            errors=errors,
             data_schema=probatio.Schema(
                 {
                     probatio.Required(CONF_APPLICATION_IDS): SelectSelector(
@@ -175,21 +192,8 @@ class LoRaWANConfigFlow(ConfigFlow, domain=DOMAIN):
         errors = {}
         if user_input is not None:
             self._input.update(user_input)
-            connection = self._connection()
-            try:
-                applications = await connection.applications()
-                if not set(self._input[CONF_APPLICATION_IDS]) <= applications.keys():
-                    errors["base"] = "cannot_connect"
-            except grpc.aio.AioRpcError as error:
-                errors["base"] = (
-                    "invalid_auth"
-                    if error.code() == grpc.StatusCode.UNAUTHENTICATED
-                    else "cannot_connect"
-                )
-            except ConnectionUnavailable:
-                errors["base"] = "cannot_connect"
-            finally:
-                await connection.close()
+            if error := await self._async_validate_connection():
+                errors["base"] = error
             if not errors:
                 return self.async_update_reload_and_abort(
                     self._get_reauth_entry(), data_updates=user_input
@@ -201,3 +205,24 @@ class LoRaWANConfigFlow(ConfigFlow, domain=DOMAIN):
             ),
             errors=errors,
         )
+
+    async def _async_validate_connection(self) -> str | None:
+        """Check device, profile and catalog access for the selected applications."""
+        connection = self._connection()
+        try:
+            await connection.inventory()
+        except grpc.aio.AioRpcError as error:
+            return (
+                "invalid_auth"
+                if error.code()
+                in (
+                    grpc.StatusCode.UNAUTHENTICATED,
+                    grpc.StatusCode.PERMISSION_DENIED,
+                )
+                else "cannot_connect"
+            )
+        except ConnectionUnavailable:
+            return "cannot_connect"
+        finally:
+            await connection.close()
+        return None

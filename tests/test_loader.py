@@ -2293,3 +2293,18 @@ async def test_async_get_integrations_multiple_non_existent(
     ):
         integrations = await loader.async_get_integrations(hass, ["does_not_exist"])
     assert integrations["does_not_exist"] is integration
+
+
+@pytest.mark.parametrize("vendors", [[123, 744], []])
+async def test_get_lorawan(hass: HomeAssistant, vendors: list[int]) -> None:
+    """Custom registrations replace built-ins without changing generated data."""
+    integration = _get_test_integration(hass, "sensecap", True)
+    integration.manifest["lorawan"] = vendors
+    with patch(
+        "homeassistant.loader.async_get_custom_components",
+        return_value={"sensecap": integration},
+    ):
+        registrations = await loader.async_get_lorawan(hass)
+    assert registrations.get("sensecap", []) == vendors
+    assert registrations["dragino"] == [676]
+    assert loader.LORAWAN["sensecap"] == [744]

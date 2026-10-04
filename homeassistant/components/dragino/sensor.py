@@ -19,6 +19,8 @@ from ._vendor.dragino_lorawan import LT22222
 from .coordinator import DraginoCoordinator
 from .entity import DraginoEntity, async_setup_entities
 
+PARALLEL_UPDATES = 0
+
 
 @dataclass(frozen=True, kw_only=True)
 class DraginoSensorDescription(SensorEntityDescription):

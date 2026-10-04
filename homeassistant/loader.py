@@ -41,6 +41,7 @@ from .generated.application_credentials import APPLICATION_CREDENTIALS
 from .generated.bluetooth import BLUETOOTH
 from .generated.config_flows import FLOWS
 from .generated.dhcp import DHCP
+from .generated.lorawan import LORAWAN
 from .generated.mqtt import MQTT
 from .generated.ssdp import SSDP
 from .generated.usb import USB
@@ -282,6 +283,7 @@ class Manifest(TypedDict, total=False):
     iot_class: str
     bluetooth: list[dict[str, int | str]]
     mqtt: list[str]
+    lorawan: list[int]
     ssdp: list[dict[str, str]]
     zeroconf: list[str | dict[str, str]]
     dhcp: list[dict[str, bool | str]]
@@ -664,6 +666,17 @@ async def async_get_homekit(
     return homekit
 
 
+async def async_get_lorawan(hass: HomeAssistant) -> dict[str, list[int]]:
+    """Return LoRaWAN vendor registrations, including custom integrations."""
+    registrations = LORAWAN.copy()
+    integrations = await async_get_custom_components(hass)
+    for integration in integrations.values():
+        registrations.pop(integration.domain, None)
+        if integration.lorawan:
+            registrations[integration.domain] = integration.lorawan
+    return registrations
+
+
 async def async_get_ssdp(hass: HomeAssistant) -> dict[str, list[dict[str, str]]]:
     """Return cached list of ssdp mappings."""
 
@@ -958,6 +971,11 @@ class Integration:
     def mqtt(self) -> list[str] | None:
         """Return Integration MQTT entries."""
         return self.manifest.get("mqtt")
+
+    @property
+    def lorawan(self) -> list[int] | None:
+        """Return the LoRaWAN vendor IDs this integration supports."""
+        return self.manifest.get("lorawan")
 
     @property
     def ssdp(self) -> list[dict[str, str]] | None:

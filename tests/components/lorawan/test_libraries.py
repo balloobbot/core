@@ -19,12 +19,13 @@ from lorawan_connection.mock import MockConnection
 import pytest
 
 from homeassistant.components.dragino._vendor.dragino_lorawan import DraginoDevices
-from homeassistant.components.lorawan.discovery import VENDORS
 from homeassistant.components.sensecap._vendor.sensecap_lorawan import (
     S2101_MODEL_ID,
     SenseCapDeviceCollection,
     decode_s2101,
 )
+from homeassistant.core import HomeAssistant
+from homeassistant.loader import async_get_integration, async_get_lorawan
 from homeassistant.util import dt as dt_util
 
 NOW = dt_util.utcnow()
@@ -210,11 +211,13 @@ def test_same_millisecond_partial_updates() -> None:
         ("dragino", 676, DraginoDevices.DEVICES),
     ],
 )
-def test_registered_models(
-    domain: str, vendor_id: int, models: tuple[type[Device], ...]
+async def test_registered_models(
+    hass: HomeAssistant, domain: str, vendor_id: int, models: tuple[type[Device], ...]
 ) -> None:
     """Discovery metadata must match the models the vendor library can create."""
-    registration = VENDORS[vendor_id]
-    assert registration.domain == domain
-    assert registration.models == frozenset(model.catalog_model_id for model in models)
+    registrations = await async_get_lorawan(hass)
+    assert vendor_id in registrations[domain]
+    integration = await async_get_integration(hass, domain)
+    platform = await integration.async_get_platform("lorawan")
+    assert models == platform.DEVICE_MODELS
     assert all(model.vendor_id == vendor_id for model in models)

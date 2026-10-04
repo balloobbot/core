@@ -10,9 +10,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from . import DraginoConfigEntry
+from . import DOMAIN, DraginoConfigEntry
 from .coordinator import DraginoCoordinator
 from .entity import DraginoEntity, async_setup_entities
+
+# ChirpStack queues commands; waiting for one ACK must not block other devices.
+PARALLEL_UPDATES = 0
 
 
 async def async_setup_entry(
@@ -72,7 +75,10 @@ class DraginoOutput(DraginoEntity, SwitchEntity):
                 await command(self.channel, on)
         except TimeoutError as error:
             raise HomeAssistantError(
-                "Timed out waiting for device acknowledgement"
+                translation_domain=DOMAIN,
+                translation_key="command_timeout",
             ) from error
         except DownlinkError as error:
-            raise HomeAssistantError(str(error)) from error
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="command_failed"
+            ) from error

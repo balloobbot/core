@@ -3,7 +3,9 @@
 import asyncio
 from collections.abc import AsyncGenerator, Callable
 from dataclasses import replace
+import gc
 from unittest.mock import AsyncMock, Mock, patch
+import weakref
 
 from lorawan_connection import (
     AckData,
@@ -17,7 +19,8 @@ import pytest
 from syrupy.assertion import SnapshotAssertion
 
 from homeassistant.config_entries import ConfigEntryState
-from homeassistant.core import HomeAssistant
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
+from homeassistant.core import CoreState, HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import async_get_platforms
 from homeassistant.setup import async_setup_component
@@ -216,7 +219,7 @@ async def test_command_negative_ack(
         return "queue-id"
 
     mock_connection.async_send_downlink.side_effect = send
-    with pytest.raises(HomeAssistantError, match="did not acknowledge"):
+    with pytest.raises(HomeAssistantError, match="Unable to send the command"):
         await hass.services.async_call(
             "switch", "turn_on", {"entity_id": "switch.workshop_relay_1"}, blocking=True
         )
@@ -394,3 +397,39 @@ async def test_shared_coordinator(
     await hass.async_block_till_done()
     assert not entry.runtime_data.coordinators
     assert not list(coordinator.async_contexts())
+
+
+async def test_removed_coordinators_are_released(
+    hass: HomeAssistant,
+    setup_dragino: tuple[MockConfigEntry, Callable],
+) -> None:
+    """Device churn must not grow entry cleanup callbacks or retain models."""
+    entry, emit = setup_dragino
+    before = len(entry._on_unload)
+    reference = weakref.ref(entry.runtime_data.coordinators[DESCRIPTOR.dev_eui])
+    emit(inventory(EventType.REMOVED))
+    await hass.async_block_till_done()
+    gc.collect()
+    assert reference() is None
+    emit(inventory())
+    await hass.async_block_till_done()
+    reference = weakref.ref(entry.runtime_data.coordinators[DESCRIPTOR.dev_eui])
+    emit(inventory(EventType.REMOVED))
+    await hass.async_block_till_done()
+    gc.collect()
+    assert reference() is None
+    assert len(entry._on_unload) == before
+
+
+async def test_shutdown_does_not_reload_vendors(
+    hass: HomeAssistant,
+    setup_dragino: tuple[MockConfigEntry, Callable],
+    mock_connection: Mock,
+) -> None:
+    """An intentional HA stop closes the shared transport without vendor reloads."""
+    hass.set_state(CoreState.stopping)
+    with patch.object(hass.config_entries, "async_schedule_reload") as reload:
+        hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)
+        await hass.async_block_till_done()
+    assert not mock_connection.available
+    reload.assert_not_called()

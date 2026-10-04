@@ -1,35 +1,44 @@
-"""POC vendor registrations shared by discovery and device support reporting."""
+"""Resolve model support from vendor integration platforms."""
 
-from dataclasses import dataclass
+from collections.abc import Sequence
+from typing import Protocol, cast
 
-from lorawan_connection import DeviceDescriptor
+from lorawan_connection import Device, DeviceDescriptor
 
+from homeassistant.core import HomeAssistant
+from homeassistant.requirements import async_get_integration_with_requirements
 
-@dataclass(frozen=True)
-class VendorIntegration:
-    """Declare an integration and the catalog models it supports."""
-
-    domain: str
-    models: frozenset[str]
+from .const import DOMAIN
 
 
-# Replace this POC table with integration discovery metadata before upstreaming.
-VENDORS = {
-    744: VendorIntegration(
-        "sensecap", frozenset({"fc455aa2-01cf-492b-9359-a5d8c9a0e1b3"})
-    ),
-    676: VendorIntegration(
-        "dragino", frozenset({"cb0a7bef-eaa0-4c61-a0b6-ce33e6ecbc4f"})
-    ),
-}
+class LoRaWANPlatform(Protocol):
+    """Device model declarations supplied by a vendor integration."""
+
+    DEVICE_MODELS: Sequence[type[Device]]
 
 
-def unsupported_reason(device: DeviceDescriptor) -> str | None:
-    """Explain missing support independently of vendor config entry setup."""
+async def async_unsupported_reason(
+    hass: HomeAssistant,
+    device: DeviceDescriptor,
+    integrations: dict[str, list[int]],
+) -> str | None:
+    """Explain support without requiring a configured vendor entry."""
     if device.vendor_id is None or not device.catalog_model_id:
         return "no_catalog_identity"
-    if (integration := VENDORS.get(device.vendor_id)) is None:
+    domains = [
+        domain
+        for domain, vendors in integrations.items()
+        if device.vendor_id in vendors
+    ]
+    if not domains:
         return "no_vendor_integration"
-    if device.catalog_model_id not in integration.models:
-        return "model_not_supported"
-    return None
+    for domain in domains:
+        integration = await async_get_integration_with_requirements(hass, domain)
+        platform = cast(LoRaWANPlatform, await integration.async_get_platform(DOMAIN))
+        if any(
+            model.vendor_id == device.vendor_id
+            and model.catalog_model_id == device.catalog_model_id
+            for model in platform.DEVICE_MODELS
+        ):
+            return None
+    return "model_not_supported"

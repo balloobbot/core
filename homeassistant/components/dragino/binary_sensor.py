@@ -10,6 +10,8 @@ from . import DraginoConfigEntry
 from .coordinator import DraginoCoordinator
 from .entity import DraginoEntity, async_setup_entities
 
+PARALLEL_UPDATES = 0
+
 
 async def async_setup_entry(
     hass: HomeAssistant,

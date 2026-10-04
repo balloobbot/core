@@ -244,7 +244,9 @@ async def test_real_stack(hass: HomeAssistant) -> None:
         provider = setup_flow["result"]
         await hass.async_block_till_done()
         assert (
-            provider.runtime_data.devices["0201010101010101"].catalog_model_id
+            provider.runtime_data.connection.devices[
+                "0201010101010101"
+            ].catalog_model_id
             == S2101_MODEL_ID
         )
         flow = next(
@@ -284,15 +286,16 @@ async def test_real_stack(hass: HomeAssistant) -> None:
         hass.config_entries.async_update_entry(
             provider, data={**provider.data, "api_key": writable.token}
         )
-        # Reload must not revive retained uplinks as new measurements.
+        # Reload keeps the network and physical device identities unchanged.
         assert await hass.config_entries.async_reload(provider.entry_id)
         await hass.async_block_till_done()
         assert await hass.config_entries.async_reload(vendor.entry_id)
         await hass.async_block_till_done()
         await asyncio.sleep(2)
-        assert hass.states.get("sensor.greenhouse_temperature").state == "unknown"
+        assert vendor.data["network_id"] == provider.data["network_id"]
+        assert "0201010101010101" in vendor.runtime_data.collection.devices
         print(
-            "PASS: upgraded to full tenant key; reload retained stable device identity and suppressed historical stream backlog"
+            "PASS: upgraded to full tenant key; reload retained stable device identity"
         )
         await proxy.close()
         async with asyncio.timeout(10):

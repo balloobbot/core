@@ -7,7 +7,7 @@ rules:
   brands: todo
   common-modules: done
   config-flow: done
-  config-flow-test-coverage: todo
+  config-flow-test-coverage: done
   dependency-transparency: todo
   docs-actions:
     status: exempt

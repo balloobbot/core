@@ -1,8 +1,10 @@
 """Configuration and authentication flows."""
 
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import grpc
+from lorawan_connection import ConnectionUnavailable
+import pytest
 
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant
@@ -25,6 +27,7 @@ async def test_global_key(hass: HomeAssistant, mock_connection: Mock) -> None:
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"]["tenant_id"] == "tenant"
     assert result["data"]["network_id"]
+    mock_connection.inventory.assert_awaited_once()
     await hass.async_block_till_done()
 
 
@@ -45,7 +48,12 @@ async def test_scoped_key(hass: HomeAssistant, mock_connection: Mock) -> None:
     assert result["step_id"] == "applications"
 
 
-async def test_invalid_auth(hass: HomeAssistant, mock_connection: Mock) -> None:
+@pytest.mark.parametrize(
+    "status", [grpc.StatusCode.UNAUTHENTICATED, grpc.StatusCode.PERMISSION_DENIED]
+)
+async def test_invalid_auth(
+    hass: HomeAssistant, mock_connection: Mock, status: grpc.StatusCode
+) -> None:
     """A tenant read disambiguates a scoped key from a rejected credential."""
     mock_connection.tenants.side_effect = grpc.aio.AioRpcError(
         grpc.StatusCode.UNAUTHENTICATED, (), (), "bad key"
@@ -56,9 +64,7 @@ async def test_invalid_auth(hass: HomeAssistant, mock_connection: Mock) -> None:
         data={"endpoint": "http://server:8080", "api_key": "bad"},
     )
     assert result["step_id"] == "tenant"
-    mock_connection.applications.side_effect = grpc.aio.AioRpcError(
-        grpc.StatusCode.UNAUTHENTICATED, (), (), ""
-    )
+    mock_connection.applications.side_effect = grpc.aio.AioRpcError(status, (), (), "")
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"tenant_id": "tenant"}
     )
@@ -77,3 +83,176 @@ async def test_reauth(
     assert provider_entry.data["api_key"] == "replacement"
     assert provider_entry.data["network_id"] == "network"
     await hass.async_block_till_done()
+
+
+async def test_initial_form(hass: HomeAssistant) -> None:
+    """Show connection fields before attempting network access."""
+    result = await hass.config_entries.flow.async_init(
+        "lorawan", context={"source": SOURCE_USER}
+    )
+    assert result["step_id"] == "user"
+    assert not result["errors"]
+
+
+async def test_invalid_endpoint(hass: HomeAssistant, mock_connection: Mock) -> None:
+    """Keep malformed endpoints in the connection form."""
+    with patch(
+        "homeassistant.components.lorawan.config_flow.ChirpStackConnection",
+        side_effect=ValueError,
+    ):
+        result = await hass.config_entries.flow.async_init(
+            "lorawan",
+            context={"source": SOURCE_USER},
+            data={"endpoint": "http://server/path", "api_key": "secret"},
+        )
+    assert result["errors"] == {"base": "invalid_endpoint"}
+    mock_connection.tenants.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        ConnectionUnavailable(),
+        grpc.aio.AioRpcError(grpc.StatusCode.UNAVAILABLE, (), (), "offline"),
+    ],
+)
+async def test_tenant_listing_failure(
+    hass: HomeAssistant, mock_connection: Mock, error: Exception
+) -> None:
+    """Connection and incomplete-list failures remain in the form."""
+    mock_connection.tenants.side_effect = error
+    result = await hass.config_entries.flow.async_init(
+        "lorawan",
+        context={"source": SOURCE_USER},
+        data={"endpoint": "http://server:8080", "api_key": "secret"},
+    )
+    assert result["errors"] == {"base": "cannot_connect"}
+    mock_connection.close.assert_awaited_once()
+
+
+async def test_multiple_tenants(hass: HomeAssistant, mock_connection: Mock) -> None:
+    """Offer a tenant selector when a key can access several tenants."""
+    mock_connection.tenants.return_value = {"tenant": "Home", "second": "Office"}
+    result = await hass.config_entries.flow.async_init(
+        "lorawan",
+        context={"source": SOURCE_USER},
+        data={"endpoint": "http://server:8080", "api_key": "secret"},
+    )
+    assert result["step_id"] == "tenant"
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"tenant_id": "second"}
+    )
+    assert result["step_id"] == "applications"
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        ConnectionUnavailable(),
+        grpc.aio.AioRpcError(grpc.StatusCode.UNAVAILABLE, (), (), "offline"),
+    ],
+)
+async def test_application_listing_failure(
+    hass: HomeAssistant, mock_connection: Mock, error: Exception
+) -> None:
+    """Keep the chosen tenant when application enumeration fails."""
+    mock_connection.applications.side_effect = error
+    result = await hass.config_entries.flow.async_init(
+        "lorawan",
+        context={"source": SOURCE_USER},
+        data={"endpoint": "http://server:8080", "api_key": "secret"},
+    )
+    assert result["step_id"] == "tenant"
+    assert result["errors"] == {"base": "cannot_connect"}
+
+
+async def test_no_applications(hass: HomeAssistant, mock_connection: Mock) -> None:
+    """Explain that an application must first be created on the server."""
+    mock_connection.applications.return_value = {}
+    result = await hass.config_entries.flow.async_init(
+        "lorawan",
+        context={"source": SOURCE_USER},
+        data={"endpoint": "http://server:8080", "api_key": "secret"},
+    )
+    assert result["reason"] == "no_applications"
+    mock_connection.inventory.assert_not_awaited()
+
+
+async def test_empty_selection(hass: HomeAssistant, mock_connection: Mock) -> None:
+    """An existing application must be selected before creating an entry."""
+    result = await hass.config_entries.flow.async_init(
+        "lorawan",
+        context={"source": SOURCE_USER},
+        data={"endpoint": "http://server:8080", "api_key": "secret"},
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"application_ids": []}
+    )
+    assert result["step_id"] == "applications"
+    assert result["errors"] == {"application_ids": "select_application"}
+    mock_connection.inventory.assert_not_awaited()
+    assert not hass.config_entries.async_entries("lorawan")
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (ConnectionUnavailable("Application removed"), "cannot_connect"),
+        (
+            grpc.aio.AioRpcError(grpc.StatusCode.UNAVAILABLE, (), (), "offline"),
+            "cannot_connect",
+        ),
+        (
+            grpc.aio.AioRpcError(grpc.StatusCode.UNAUTHENTICATED, (), (), "rejected"),
+            "invalid_auth",
+        ),
+        (
+            grpc.aio.AioRpcError(grpc.StatusCode.PERMISSION_DENIED, (), (), "denied"),
+            "invalid_auth",
+        ),
+    ],
+)
+async def test_inventory_access_failure(
+    hass: HomeAssistant, mock_connection: Mock, error: Exception, expected: str
+) -> None:
+    """Application listing alone does not establish device/profile read access."""
+    mock_connection.inventory.side_effect = error
+    result = await hass.config_entries.flow.async_init(
+        "lorawan",
+        context={"source": SOURCE_USER},
+        data={"endpoint": "http://server:8080", "api_key": "secret"},
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"application_ids": ["application"]}
+    )
+    assert result["step_id"] == "applications"
+    assert result["errors"] == {"base": expected}
+    mock_connection.inventory.assert_awaited_once()
+    assert not hass.config_entries.async_entries("lorawan")
+
+
+async def test_reauth_rejected_inventory(
+    hass: HomeAssistant, provider_entry: MockConfigEntry, mock_connection: Mock
+) -> None:
+    """An unusable replacement key never overwrites working entry credentials."""
+    mock_connection.inventory.side_effect = ConnectionUnavailable(
+        "Selected application missing"
+    )
+    result = await provider_entry.start_reauth_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"api_key": "replacement"}
+    )
+    assert result["errors"] == {"base": "cannot_connect"}
+    assert provider_entry.data["api_key"] == "secret"
+
+
+async def test_duplicate_network(hass: HomeAssistant, mock_connection: Mock) -> None:
+    """The same endpoint and tenant cannot create another provider entry."""
+    entry = MockConfigEntry(domain="lorawan", unique_id="http://server:8080:tenant")
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.flow.async_init(
+        "lorawan",
+        context={"source": SOURCE_USER},
+        data={"endpoint": "http://server:8080", "api_key": "secret"},
+    )
+    assert result["reason"] == "already_configured"

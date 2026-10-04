@@ -9,7 +9,8 @@ import pytest
 
 from homeassistant.components import lorawan
 from homeassistant.config_entries import ConfigEntryState
-from homeassistant.core import HomeAssistant
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
+from homeassistant.core import CoreState, HomeAssistant
 
 from .test_libraries import DESCRIPTOR, inventory
 
@@ -111,3 +112,42 @@ async def test_downlink_uses_shared_connection(
     assert await connection.async_send_downlink(downlink) == "queue-id"
     mock_connection.async_send_downlink.assert_awaited_once_with(downlink)
     await hass.config_entries.async_unload(provider_entry.entry_id)
+
+
+async def test_home_assistant_shutdown(
+    hass: HomeAssistant,
+    provider_entry: MockConfigEntry,
+    mock_connection: Mock,
+) -> None:
+    """Closing HA also closes the provider without scheduling a reconnect."""
+    assert await hass.config_entries.async_setup(provider_entry.entry_id)
+    hass.set_state(CoreState.stopping)
+    with patch.object(hass.config_entries, "async_schedule_reload") as reload:
+        hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)
+        await hass.async_block_till_done()
+    mock_connection.close.assert_awaited_once()
+    assert not mock_connection.available
+    reload.assert_not_called()
+
+
+async def test_manifest_vendor_discovery(
+    hass: HomeAssistant,
+    provider_entry: MockConfigEntry,
+    mock_connection: Mock,
+) -> None:
+    """Multiple integration registrations can match a vendor without hardcoding."""
+    mock_connection.devices = {DESCRIPTOR.dev_eui: DESCRIPTOR}
+    with (
+        patch(
+            "homeassistant.components.lorawan.async_get_lorawan",
+            return_value={"one": [744, 676], "two": [744], "other": [123]},
+        ),
+        patch.object(hass.config_entries.flow, "async_init", AsyncMock()) as discovery,
+    ):
+        assert await hass.config_entries.async_setup(provider_entry.entry_id)
+        await hass.async_block_till_done()
+        assert [call.args[0] for call in discovery.await_args_list] == ["one", "two"]
+        mock_connection._emit(inventory(DESCRIPTOR, EventType.UPDATED))
+        await hass.async_block_till_done()
+        assert discovery.await_count == 2
+        await hass.config_entries.async_unload(provider_entry.entry_id)

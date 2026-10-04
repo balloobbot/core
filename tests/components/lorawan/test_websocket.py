@@ -1,7 +1,8 @@
 """Inventory API access control and credential isolation."""
 
+from asyncio import Event
 from dataclasses import replace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from lorawan_connection import DeviceDescriptor, DeviceEventData, EventType
 import pytest
@@ -13,6 +14,49 @@ from .test_libraries import DESCRIPTOR
 
 from tests.common import MockConfigEntry
 from tests.typing import WebSocketGenerator
+
+
+async def test_inventory_during_unload(
+    hass: HomeAssistant,
+    provider_entry: MockConfigEntry,
+    mock_connection: Mock,
+    hass_ws_client: WebSocketGenerator,
+) -> None:
+    """An import awaiting completion keeps the request's original device snapshot."""
+    second = replace(DESCRIPTOR, dev_eui="0201010101010102")
+    mock_connection.devices = {DESCRIPTOR.dev_eui: DESCRIPTOR, second.dev_eui: second}
+    assert await hass.config_entries.async_setup(provider_entry.entry_id)
+    client = await hass_ws_client(hass)
+    entered, release = Event(), Event()
+
+    async def support(
+        hass: HomeAssistant,
+        device: DeviceDescriptor,
+        integrations: dict[str, list[int]],
+    ) -> None:
+        entered.set()
+        await release.wait()
+
+    with patch(
+        "homeassistant.components.lorawan.websocket_api.async_unsupported_reason",
+        side_effect=support,
+    ):
+        await client.send_json(
+            {
+                "id": 1,
+                "type": "lorawan/devices/list",
+                "entry_id": provider_entry.entry_id,
+            }
+        )
+        await entered.wait()
+        assert await hass.config_entries.async_unload(provider_entry.entry_id)
+        release.set()
+        result = await client.receive_json()
+    assert result["success"]
+    assert [device["dev_eui"] for device in result["result"]["devices"]] == [
+        DESCRIPTOR.dev_eui,
+        second.dev_eui,
+    ]
 
 
 @pytest.mark.parametrize(
@@ -125,6 +169,7 @@ async def test_support_changes_with_profile(
     await client.send_json({"id": 1, **request})
     result = await client.receive_json()
     assert result["result"]["devices"][0]["unsupported_reason"] == "no_catalog_identity"
+    mock_connection.devices[DESCRIPTOR.dev_eui] = DESCRIPTOR
     mock_connection._emit(
         DeviceEventData(
             type=EventType.UPDATED, received_at=dt_util.utcnow(), descriptor=DESCRIPTOR

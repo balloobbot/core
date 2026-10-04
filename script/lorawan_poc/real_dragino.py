@@ -150,7 +150,9 @@ async def test_real_dragino_stack(hass: HomeAssistant) -> None:
         provider = setup_flow["result"]
         await hass.async_block_till_done()
         assert (
-            provider.runtime_data.devices["0201010101010102"].catalog_model_id
+            provider.runtime_data.connection.devices[
+                "0201010101010102"
+            ].catalog_model_id
             == LT22222.catalog_model_id
         )
         flow = next(

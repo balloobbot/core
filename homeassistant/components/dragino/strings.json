@@ -26,19 +26,39 @@
   },
   "entity": {
     "binary_sensor": {
-      "digital_input": { "name": "Digital input {channel}" }
+      "digital_input": {
+        "name": "Digital input {channel}"
+      }
     },
     "sensor": {
-      "current": { "name": "Current {channel}" },
-      "digital_count": { "name": "Digital count {channel}" },
-      "voltage": { "name": "Voltage {channel}" },
-      "voltage_count": { "name": "Voltage count {channel}" }
+      "current": {
+        "name": "Current {channel}"
+      },
+      "digital_count": {
+        "name": "Digital count {channel}"
+      },
+      "voltage": {
+        "name": "Voltage {channel}"
+      },
+      "voltage_count": {
+        "name": "Voltage count {channel}"
+      }
     },
     "switch": {
-      "digital_output": { "name": "Digital output {channel}" },
+      "digital_output": {
+        "name": "Digital output {channel}"
+      },
       "relay": {
         "name": "Relay {channel}"
       }
+    }
+  },
+  "exceptions": {
+    "command_failed": {
+      "message": "Unable to send the command. Check the LoRaWAN connection and the API key’s write permission."
+    },
+    "command_timeout": {
+      "message": "Timed out waiting for device acknowledgement."
     }
   }
 }

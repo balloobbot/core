@@ -2,12 +2,14 @@
   "config": {
     "abort": {
       "already_configured": "This network is already configured",
+      "no_applications": "This tenant has no applications. Create an application in ChirpStack, then try again.",
       "reauth_successful": "Authentication updated"
     },
     "error": {
       "cannot_connect": "Cannot connect or access this scope",
       "invalid_auth": "API key rejected or unable to access this tenant",
-      "invalid_endpoint": "Use an HTTP or HTTPS endpoint without a path"
+      "invalid_endpoint": "Use an HTTP or HTTPS endpoint without a path",
+      "select_application": "Select at least one application."
     },
     "step": {
       "applications": {

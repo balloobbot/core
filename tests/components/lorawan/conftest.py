@@ -47,6 +47,7 @@ def mock_connection() -> Generator[Mock]:
     connection.async_send_downlink = AsyncMock(return_value="queue-id")
     connection.async_subscribe = AsyncMock(wraps=connection.async_subscribe)
     connection.close = AsyncMock(wraps=connection.close)
+    connection.inventory = AsyncMock(return_value=())
     connection.tenants = AsyncMock(return_value={"tenant": "Home"})
     connection.applications = AsyncMock(return_value={"application": "Sensors"})
     with (

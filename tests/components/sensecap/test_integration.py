@@ -4,7 +4,9 @@
 # pylint: disable=home-assistant-component-root-import
 
 from dataclasses import replace
+import gc
 from unittest.mock import patch
+import weakref
 
 from lorawan_connection import DeviceEventData, EventType, UplinkData
 from lorawan_connection.chirpstack import ConnectionUnavailable
@@ -29,7 +31,7 @@ async def test_sensor_lifecycle(hass: HomeAssistant) -> None:
     entry.add_to_hass(hass)
     connection = MockConnection([DESCRIPTOR])
     with patch(
-        "homeassistant.components.sensecap.lorawan.get_connection",
+        "homeassistant.components.sensecap.get_connection",
         return_value=connection,
     ):
         assert await hass.config_entries.async_setup(entry.entry_id)
@@ -56,9 +58,12 @@ async def test_sensor_lifecycle(hass: HomeAssistant) -> None:
         await hass.async_block_till_done()
         assert hass.states.get("sensor.temporary_temperature") is None
         assert hass.states.get("sensor.temporary_humidity") is None
+        reference = weakref.ref(entry.runtime_data.coordinators[DESCRIPTOR.dev_eui])
         connection.emit(inventory(DESCRIPTOR, EventType.REMOVED))
         await hass.async_block_till_done()
         assert hass.states.get("sensor.greenhouse_temperature") is None
+        gc.collect()
+        assert reference() is None
         devices = entry.runtime_data.collection
         assert await hass.config_entries.async_unload(entry.entry_id)
         assert not devices.devices
@@ -72,7 +77,7 @@ async def test_provider_unavailable(hass: HomeAssistant) -> None:
     )
     entry.add_to_hass(hass)
     with patch(
-        "homeassistant.components.sensecap.lorawan.get_connection",
+        "homeassistant.components.sensecap.get_connection",
         side_effect=ConnectionUnavailable,
     ):
         assert not await hass.config_entries.async_setup(entry.entry_id)

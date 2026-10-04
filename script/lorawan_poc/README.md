@@ -34,7 +34,7 @@ are also available on the proposal website.
 4. Add integration → LoRaWAN. Enter `https://host:port` and an API key. For an
    unencrypted local server, explicitly use `http://host:port`. TLS uses the
    platform's trusted roots; there is no automatic downgrade or insecure TLS.
-5. Select a tenant and applications. Global keys can list tenants. Tenant-scoped
+5. Select a tenant and at least one application. Setup validates device/profile read access before creating the entry. Global keys can list tenants. Tenant-scoped
    keys require their tenant UUID. ChirpStack reports insufficient listing scope
    as UNAUTHENTICATED, so the flow validates the key after selecting a tenant. Full-access and read-only keys both work.
 6. Confirm the discovered SenseCAP integration. It creates one collection for
@@ -51,6 +51,9 @@ current descriptors and availability. Each descriptor includes `unsupported_reas
 - `no_vendor_integration`: the catalog vendor has no registered HA integration.
 - `model_not_supported`: the vendor integration does not yet support this model.
 - `null`: the model is supported, even before its vendor integration is configured.
+
+Vendor integrations declare their IDs in `manifest.json` and expose their library’s
+model classes in a `lorawan.py` platform. Support reporting uses those declarations.
 
 Missing catalog identity takes precedence. The endpoint exposes no credentials. The regular HA
 integration/device/entity pages show the provider, collection, and sensors.
@@ -104,7 +107,8 @@ await models.async_setup()
 
 `subscribe_device_added` synchronously reports existing models as well as future
 ones. Each device has one `DataUpdateCoordinator`, shared across its entities and platforms.
-The coordinator listens to model updates. Entities inherit `lorawan.LoRaWANEntity`,
+The coordinator listens to model updates and shuts down when its model leaves the
+collection, including during unload. Entities inherit `lorawan.LoRaWANEntity`,
 which handles device removal and preserves registry records.
 Resolve the restricted connection with `lorawan.get_connection(hass, provider_entry_id)`.
 Attach a reload listener with `connection.on_disconnect(callback)`. The collection
@@ -130,9 +134,11 @@ A disconnect makes the provider unavailable before notifying consumers. HA
 reloads the collection and uses `ConfigEntryNotReady` until the provider is
 available. Rejected credentials trigger the provider's reauthentication flow.
 Sleeping sensors keep their last readings; a transport disconnect is different.
-Delivery is live-only and missed readings are acceptable. The adapter compares
-Redis event IDs with connection time to discard the internal stream's backlog;
-HA and ChirpStack clocks must therefore be reasonably aligned.
+Missed readings are acceptable; HA does not backfill historical state. ChirpStack’s
+current stream also sends retained events when opened. The revised library forwards
+them with server timestamps to avoid dropping live data when the clocks differ.
+The clock fix is committed in the library; this branch keeps the published 0.8.0
+requirement until the next authorized release.
 
 ## Try the device-library CLI
 
@@ -169,7 +175,7 @@ PYTHONPATH=. uv run --no-sync python -m pytest -p tests.conftest \
 
 It exercises the real config flow, catalog lookup, read-only tenant key,
 OTAA join, encrypted uplink, protobuf event stream, vendor collection, HA sensors,
-upgrade to a full tenant key, reload/backlog suppression, a real TCP outage with
+upgrade to a full tenant key, reload with stable identity, a real TCP outage with
 automatic retry/recovery, and device removal. It also verifies the CLI’s inventory and decoded state against
 the same real uplink.
 No gateway hardware or RF is involved. Physical SenseCAP and Dragino devices have not been tested.
