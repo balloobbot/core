@@ -2,7 +2,7 @@
 
 import asyncio
 from asyncio import Lock, sleep
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Awaitable, Callable, Iterator, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from functools import partial
@@ -285,7 +285,7 @@ class RepositoryData:
     """RepositoryData class."""
 
     archived: bool = False
-    authors: list[str] = attr.field(factory=list)
+    authors: Sequence[str] = attr.field(factory=list)
     category: str = ""
     config_flow: bool = False
     default_branch: str | None = None

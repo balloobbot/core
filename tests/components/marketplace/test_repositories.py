@@ -1966,8 +1966,8 @@ async def test_plugin_directory_owned_by_another_repository(
 @pytest.mark.parametrize(
     ("key", "value", "attribute", "default"),
     [
-        pytest.param("codeowners", [42], "authors", [], id="codeowners_numbers"),
-        pytest.param("codeowners", "@owner", "authors", [], id="codeowners_string"),
+        pytest.param("codeowners", [42], "authors", (), id="codeowners_numbers"),
+        pytest.param("codeowners", "@owner", "authors", (), id="codeowners_string"),
         pytest.param("name", 42, "manifest_name", None, id="name_number"),
         pytest.param(
             "config_flow", "no", "config_flow", False, id="config_flow_string"

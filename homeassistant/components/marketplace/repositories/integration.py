@@ -303,7 +303,7 @@ class IntegrationRepository(Repository):
                 )
 
             self.integration_manifest = manifest
-            self.data.authors = list(metadata.codeowners)
+            self.data.authors = metadata.codeowners
             self.data.domain = metadata.domain
             self.data.manifest_name = metadata.name
             self.data.config_flow = metadata.config_flow
