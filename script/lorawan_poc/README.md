@@ -135,10 +135,12 @@ reloads the collection and uses `ConfigEntryNotReady` until the provider is
 available. Rejected credentials trigger the provider's reauthentication flow.
 Sleeping sensors keep their last readings; a transport disconnect is different.
 Missed readings are acceptable; HA does not backfill historical state. ChirpStack’s
-current stream also sends retained events when opened. The revised library forwards
-them with server timestamps to avoid dropping live data when the clocks differ.
-The clock fix is committed in the library; this branch keeps the published 0.8.0
-requirement until the next authorized release.
+current stream also sends retained events when opened. Timestamp filtering drops
+older events, assuming synchronized HA and ChirpStack clocks. Library main captures
+the cutoff when each device stream opens, including devices discovered later.
+This branch keeps published 0.8.0, whose cutoff is connection creation time, until
+the next authorized release. A server-side live-only option would remove the clock
+assumption. There is no two-second startup filter.
 
 ## Try the device-library CLI
 
