@@ -55,6 +55,12 @@ current descriptors and availability. Each descriptor includes `unsupported_reas
 Missing catalog identity takes precedence. The endpoint exposes no credentials. The regular HA
 integration/device/entity pages show the provider, collection, and sensors.
 
+Catalog entries do not require an encoder or decoder. The catalog's device
+identity and radio profiles are enough for mapping; our Python libraries decode
+uplinks and encode commands. The [catalog contribution guide](https://github.com/chirpstack/chirpstack-device-profiles#add-devices)
+makes codecs optional, and the [ChirpStack importer](https://github.com/chirpstack/chirpstack/blob/v4.19.2/chirpstack/src/cmd/import_device_profiles.rs)
+retains the device identity without a codec.
+
 ## Source layout
 
 - `lorawan-connection[chirpstack]`: common event Protocols, fixture
@@ -63,7 +69,10 @@ integration/device/entity pages show the provider, collection, and sensors.
   complete inventory polling, individual event streams, and one subscription.
 - `homeassistant/components/sensecap/_vendor/sensecap_lorawan`: S2101 decoding,
   model selection, partial state, and state observers.
-- `tests/components/lorawan` and `tests/components/sensecap`: isolated tests.
+- `homeassistant/components/dragino/_vendor/dragino_lorawan`: LT-22222-L models
+  and command encoding.
+- `tests/components/lorawan`, `tests/components/sensecap`, and
+  `tests/components/dragino`: isolated tests.
 
 The shared LoRaWAN library uses the PyPI version pinned in the manifest. The SenseCAP and Dragino libraries remain
 vendored under temporary Core namespaces; they use no HA APIs and import
@@ -134,7 +143,8 @@ uv run --no-sync python -m homeassistant.components.sensecap._vendor.sensecap_lo
   --server https://host:port --api-key-file /path/to/key --tenant TENANT_UUID
 ```
 
-Remove `--list` to watch decoded state. Add `--json` for newline-delimited JSON.
+The command watches decoded state. Add `--list` to list devices and exit, or
+`--json` for newline-delimited JSON.
 The helper selects models, builds the collection, and observes state automatically.
 Network operations are async, and key-file reads run in a worker thread.
 Event handling, model notifications, and CLI printing remain synchronous.
@@ -225,10 +235,9 @@ Never commit API keys, database files, or runtime logs.
 
 This is a POC, not a claimed Bronze-quality contribution. `quality_scale.yaml`
 records remaining distribution/documentation work as `todo`. Full Hassfest
-currently rejects that incomplete quality tier. The temporary commit URL also
-fails the PyPI-only requirement checks and requirements generator. Replace it
-with the next published library version before submission.
-Publish the SenseCAP library, add official integration documentation and brands, review
+currently rejects that incomplete quality tier. The POC uses the published library
+from PyPI and passes the requirements generator.
+Publish the SenseCAP and Dragino libraries, add official integration documentation and brands, review
 the vendor-discovery registration mechanism, and test actual SenseCAP hardware
 before an upstream contribution.
 
