@@ -32,12 +32,11 @@ from .const import (
     CONF_TENANT_ID,
     DOMAIN,
 )
+from .discovery import VENDORS
 from .entity import LoRaWANEntity as LoRaWANEntity
 from .websocket_api import async_register
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
-# POC registration table. A manifest discovery matcher can replace this later.
-VENDORS = {744: "sensecap", 676: "dragino"}
 
 
 class _ConsumerConnection:
@@ -129,8 +128,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: LoRaWANConfigEntry) -> b
         elif event.descriptor:
             runtime.devices[event.dev_eui] = descriptor
             if (
-                domain := VENDORS.get(descriptor.vendor_id or 0)
-            ) and domain not in runtime.discovered:
+                integration := VENDORS.get(descriptor.vendor_id or 0)
+            ) and integration.domain not in runtime.discovered:
+                domain = integration.domain
                 runtime.discovered.add(domain)
                 entry.async_create_task(
                     hass,

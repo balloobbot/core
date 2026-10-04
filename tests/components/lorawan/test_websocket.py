@@ -1,8 +1,13 @@
 """Inventory API access control and credential isolation."""
 
+from dataclasses import replace
 from unittest.mock import Mock
 
+from lorawan_connection import DeviceDescriptor, DeviceEventData, EventType
+import pytest
+
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 from .test_libraries import DESCRIPTOR
 
@@ -10,24 +15,80 @@ from tests.common import MockConfigEntry
 from tests.typing import WebSocketGenerator
 
 
+@pytest.mark.parametrize(
+    ("descriptor", "reason"),
+    [
+        pytest.param(DESCRIPTOR, None, id="supported-sensecap"),
+        pytest.param(
+            replace(
+                DESCRIPTOR,
+                vendor_id=676,
+                catalog_model_id="cb0a7bef-eaa0-4c61-a0b6-ce33e6ecbc4f",
+            ),
+            None,
+            id="supported-dragino",
+        ),
+        pytest.param(
+            replace(DESCRIPTOR, vendor_id=None, catalog_model_id=""),
+            "no_catalog_identity",
+            id="custom-profile",
+        ),
+        pytest.param(
+            replace(DESCRIPTOR, catalog_model_id=""),
+            "no_catalog_identity",
+            id="missing-model-identity",
+        ),
+        pytest.param(
+            replace(DESCRIPTOR, vendor_id=None),
+            "no_catalog_identity",
+            id="missing-vendor-identity",
+        ),
+        pytest.param(
+            replace(DESCRIPTOR, vendor_id=999, catalog_model_id=""),
+            "no_catalog_identity",
+            id="missing-identity-before-vendor-match",
+        ),
+        pytest.param(
+            replace(DESCRIPTOR, vendor_id=999),
+            "no_vendor_integration",
+            id="unregistered-vendor",
+        ),
+        pytest.param(
+            replace(DESCRIPTOR, catalog_model_id="another-model"),
+            "model_not_supported",
+            id="unsupported-sensecap-model",
+        ),
+        pytest.param(
+            replace(DESCRIPTOR, vendor_id=676, catalog_model_id="another-model"),
+            "model_not_supported",
+            id="unsupported-dragino-model",
+        ),
+    ],
+)
 async def test_inventory(
     hass: HomeAssistant,
     provider_entry: MockConfigEntry,
     mock_connection: Mock,
     hass_ws_client: WebSocketGenerator,
+    descriptor: DeviceDescriptor,
+    reason: str | None,
 ) -> None:
     """Return descriptors without exposing the API key."""
-    mock_connection.devices = {DESCRIPTOR.dev_eui: DESCRIPTOR}
+    mock_connection.devices = {descriptor.dev_eui: descriptor}
     assert await hass.config_entries.async_setup(provider_entry.entry_id)
     client = await hass_ws_client(hass)
     await client.send_json(
-        {"id": 1, "type": "lorawan/devices", "entry_id": provider_entry.entry_id}
+        {"id": 1, "type": "lorawan/devices/list", "entry_id": provider_entry.entry_id}
     )
     result = await client.receive_json()
     assert result["success"]
-    assert result["result"]["devices"][0]["vendor_id"] == 744
+    assert result["result"]["devices"][0]["vendor_id"] == descriptor.vendor_id
+    assert result["result"]["devices"][0]["unsupported_reason"] == reason
+    assert result["result"]["available"] is True
     assert "secret" not in str(result)
-    await client.send_json({"id": 2, "type": "lorawan/devices", "entry_id": "missing"})
+    await client.send_json(
+        {"id": 2, "type": "lorawan/devices/list", "entry_id": "missing"}
+    )
     assert not (await client.receive_json())["success"]
     await hass.config_entries.async_unload(provider_entry.entry_id)
 
@@ -43,7 +104,34 @@ async def test_admin_required(
     assert await hass.config_entries.async_setup(provider_entry.entry_id)
     client = await hass_ws_client(hass, access_token=hass_read_only_access_token)
     await client.send_json(
-        {"id": 1, "type": "lorawan/devices", "entry_id": provider_entry.entry_id}
+        {"id": 1, "type": "lorawan/devices/list", "entry_id": provider_entry.entry_id}
     )
     assert not (await client.receive_json())["success"]
+    await hass.config_entries.async_unload(provider_entry.entry_id)
+
+
+async def test_support_changes_with_profile(
+    hass: HomeAssistant,
+    provider_entry: MockConfigEntry,
+    mock_connection: Mock,
+    hass_ws_client: WebSocketGenerator,
+) -> None:
+    """Assigning a catalog profile clears the reason before vendor setup."""
+    descriptor = replace(DESCRIPTOR, catalog_model_id="", vendor_id=None)
+    mock_connection.devices = {descriptor.dev_eui: descriptor}
+    assert await hass.config_entries.async_setup(provider_entry.entry_id)
+    client = await hass_ws_client(hass)
+    request = {"type": "lorawan/devices/list", "entry_id": provider_entry.entry_id}
+    await client.send_json({"id": 1, **request})
+    result = await client.receive_json()
+    assert result["result"]["devices"][0]["unsupported_reason"] == "no_catalog_identity"
+    mock_connection._emit(
+        DeviceEventData(
+            type=EventType.UPDATED, received_at=dt_util.utcnow(), descriptor=DESCRIPTOR
+        )
+    )
+    await client.send_json({"id": 2, **request})
+    result = await client.receive_json()
+    assert result["result"]["devices"][0]["unsupported_reason"] is None
+    assert not hass.config_entries.async_entries("sensecap")
     await hass.config_entries.async_unload(provider_entry.entry_id)

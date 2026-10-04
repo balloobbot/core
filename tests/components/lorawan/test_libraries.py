@@ -8,10 +8,18 @@ from datetime import timedelta
 from unittest.mock import Mock
 
 from chirpstack_api import integration
-from lorawan_connection import DeviceDescriptor, DeviceEventData, EventType, UplinkData
+from lorawan_connection import (
+    Device,
+    DeviceDescriptor,
+    DeviceEventData,
+    EventType,
+    UplinkData,
+)
 from lorawan_connection.mock import MockConnection
 import pytest
 
+from homeassistant.components.dragino._vendor.dragino_lorawan import DraginoDevices
+from homeassistant.components.lorawan.discovery import VENDORS
 from homeassistant.components.sensecap._vendor.sensecap_lorawan import (
     S2101_MODEL_ID,
     SenseCapDeviceCollection,
@@ -193,3 +201,20 @@ def test_same_millisecond_partial_updates() -> None:
     assert device.temperature == 0
     assert device.humidity == 31.4
     collection.close()
+
+
+@pytest.mark.parametrize(
+    ("domain", "vendor_id", "models"),
+    [
+        ("sensecap", 744, SenseCapDeviceCollection.DEVICES),
+        ("dragino", 676, DraginoDevices.DEVICES),
+    ],
+)
+def test_registered_models(
+    domain: str, vendor_id: int, models: tuple[type[Device], ...]
+) -> None:
+    """Discovery metadata must match the models the vendor library can create."""
+    registration = VENDORS[vendor_id]
+    assert registration.domain == domain
+    assert registration.models == frozenset(model.catalog_model_id for model in models)
+    assert all(model.vendor_id == vendor_id for model in models)

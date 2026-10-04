@@ -42,8 +42,17 @@ are also available on the proposal website.
    use Add integration → SenseCAP or Dragino. With one LoRaWAN entry, it selects that network
    automatically; with several, it asks which network to use.
 
-The admin-only `lorawan/devices` websocket command takes `entry_id` and returns
-current descriptors and availability. It exposes no credentials. The regular HA
+The admin-only `lorawan/devices/list` websocket command takes `entry_id` and returns
+current descriptors and availability. Each descriptor includes `unsupported_reason`:
+
+- `no_catalog_identity`: the profile has no catalog model or vendor identity. Assign
+  the device's imported global catalog profile in ChirpStack; a matching profile
+  name alone does not identify the model.
+- `no_vendor_integration`: the catalog vendor has no registered HA integration.
+- `model_not_supported`: the vendor integration does not yet support this model.
+- `null`: the model is supported, even before its vendor integration is configured.
+
+Missing catalog identity takes precedence. The endpoint exposes no credentials. The regular HA
 integration/device/entity pages show the provider, collection, and sensors.
 
 ## Source layout

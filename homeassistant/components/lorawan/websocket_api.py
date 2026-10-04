@@ -9,6 +9,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 
 from .const import DOMAIN
+from .discovery import unsupported_reason
 
 
 @callback
@@ -19,13 +20,16 @@ def async_register(hass: HomeAssistant) -> None:
 
 @websocket_api.require_admin
 @websocket_api.websocket_command(
-    {probatio.Required("type"): "lorawan/devices", probatio.Required("entry_id"): str}
+    {
+        probatio.Required("type"): "lorawan/devices/list",
+        probatio.Required("entry_id"): str,
+    }
 )
 @callback
 def websocket_devices(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Return current device descriptors and provider availability."""
+    """Return device descriptors, support reasons, and provider availability."""
     entry = hass.config_entries.async_get_entry(msg["entry_id"])
     if entry is None or entry.domain != DOMAIN or not hasattr(entry, "runtime_data"):
         connection.send_error(msg["id"], "not_found", "LoRaWAN network is not loaded")
@@ -35,7 +39,8 @@ def websocket_devices(
         {
             "available": entry.runtime_data.connection.available,
             "devices": [
-                asdict(device) for device in entry.runtime_data.devices.values()
+                {**asdict(device), "unsupported_reason": unsupported_reason(device)}
+                for device in entry.runtime_data.devices.values()
             ],
         },
     )
