@@ -6,19 +6,17 @@ from pathlib import Path
 import sys
 from typing import TYPE_CHECKING, Any, override
 
-from awesomeversion import AwesomeVersion, AwesomeVersionStrategy
-from awesomeversion.exceptions import AwesomeVersionException
-import probatio
-
 from homeassistant import components
 from homeassistant.helpers.issue_registry import IssueSeverity, async_create_issue
 from homeassistant.loader import (
     PACKAGE_CUSTOM_COMPONENTS,
+    IntegrationMetadata,
     IntegrationNotLoaded,
     async_clear_custom_components_cache,
     async_get_custom_components,
     async_get_loaded_integration,
     async_mount_config_dir,
+    is_valid_custom_integration_version,
 )
 from homeassistant.util.json import json_loads_object
 
@@ -34,63 +32,22 @@ from ..utils.decorator import concurrent
 from ..utils.filters import get_first_directory_in_directory
 from ..utils.logger import LOGGER
 from ..utils.url import github_raw_file, ref_version
-from ..utils.validate import INTEGRATION_MANIFEST_VALUES, VALID_DOMAIN
 from .base import Repository
 
 if TYPE_CHECKING:
     from ..base import MarketplaceManager
 
 
-def _validated_domain(domain: Any) -> str:
-    """Return the domain of a remote manifest, rejecting anything but a slug.
-
-    The domain names the directory below custom_components/ the install is
-    written to, so anything else would let a repository pick its own target.
-    """
-    if not isinstance(domain, str) or not VALID_DOMAIN.match(domain):
+def _integration_metadata(manifest: dict[str, Any]) -> IntegrationMetadata:
+    """Parse shared metadata, translating invalid-domain errors for the UI."""
+    try:
+        return IntegrationMetadata.from_manifest(manifest)
+    except ValueError as err:
         raise MarketplaceError(
             translation_domain=DOMAIN,
             translation_key="invalid_domain",
-            translation_placeholders={"domain": str(domain)},
-        )
-
-    return domain
-
-
-def _manifest_value(manifest: dict[str, Any], key: str, default: Any) -> Any:
-    """Return a value of manifest.json, the default when it has the wrong type."""
-    if key not in manifest:
-        return default
-
-    try:
-        return INTEGRATION_MANIFEST_VALUES[key](manifest[key])
-    except probatio.Invalid:
-        LOGGER.warning(
-            "Ignoring %s in manifest.json, %r is not valid", key, manifest[key]
-        )
-        return default
-
-
-# The version formats the loader accepts for a custom integration
-LOADABLE_VERSION_STRATEGIES = [
-    AwesomeVersionStrategy.CALVER,
-    AwesomeVersionStrategy.SEMVER,
-    AwesomeVersionStrategy.SIMPLEVER,
-    AwesomeVersionStrategy.BUILDVER,
-    AwesomeVersionStrategy.PEP440,
-]
-
-
-def _is_loadable_version(version: Any) -> bool:
-    """Return if the loader accepts this as the version of a custom integration."""
-    if not isinstance(version, str):
-        return False
-
-    try:
-        AwesomeVersion(version, ensure_strategy=LOADABLE_VERSION_STRATEGIES)
-    except AwesomeVersionException:
-        return False
-    return True
+            translation_placeholders={"domain": str(manifest["domain"])},
+        ) from err
 
 
 def _check_loadable_manifest(directory: Path, domain: str | None) -> None:
@@ -116,7 +73,7 @@ def _check_loadable_manifest(directory: Path, domain: str | None) -> None:
             },
         )
 
-    if not _is_loadable_version(manifest.get("version")):
+    if not is_valid_custom_integration_version(manifest.get("version")):
         raise MarketplaceError(
             translation_domain=DOMAIN,
             translation_key="installed_manifest_without_version",
@@ -331,7 +288,8 @@ class IntegrationRepository(Repository):
     def _use_integration_manifest(self, manifest: dict[str, Any]) -> None:
         """Take the details of the integration from its manifest.json."""
         try:
-            domain = _validated_domain(manifest["domain"])
+            metadata = _integration_metadata(manifest)
+            domain = metadata.domain
             # The files of an install stay where they are, removal needs to find them
             if self.data.installed and self.data.domain not in (None, domain):
                 raise MarketplaceError(
@@ -345,10 +303,10 @@ class IntegrationRepository(Repository):
                 )
 
             self.integration_manifest = manifest
-            self.data.authors = _manifest_value(manifest, "codeowners", [])
-            self.data.domain = domain
-            self.data.manifest_name = _manifest_value(manifest, "name", None)
-            self.data.config_flow = _manifest_value(manifest, "config_flow", False)
+            self.data.authors = list(metadata.codeowners)
+            self.data.domain = metadata.domain
+            self.data.manifest_name = metadata.name
+            self.data.config_flow = metadata.config_flow
 
         except KeyError as exception:
             self.validate.errors.append(

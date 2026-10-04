@@ -5,13 +5,14 @@ documentation as possible to keep it understandable.
 """
 
 import asyncio
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 import importlib
 import logging
 import os
 import pathlib
+import re
 import sys
 import time
 from types import ModuleType
@@ -49,7 +50,7 @@ from .helpers.json import cached_json_fragment, json_fragment
 from .helpers.typing import UNDEFINED, UndefinedType
 from .util.async_ import create_eager_task, wait_shared_future
 from .util.hass_dict import HassKey
-from .util.json import JSON_DECODE_EXCEPTIONS, json_loads
+from .util.json import json_loads, json_loads_object
 
 if TYPE_CHECKING:
     # The relative imports below are guarded by TYPE_CHECKING
@@ -295,6 +296,72 @@ class Manifest(TypedDict, total=False):
     import_executor: bool
     single_config_entry: bool
     preview_features: dict[str, dict[str, str]]
+
+
+_INTEGRATION_DOMAIN = re.compile(r"[a-z0-9_-]+")
+_INTEGRATION_METADATA_VALUES = {
+    "name": probatio.Schema(str),
+    "codeowners": probatio.Schema([str]),
+    "config_flow": probatio.Schema(bool),
+}
+
+
+def _integration_metadata_value(
+    manifest: Mapping[str, Any], key: str, default: Any
+) -> Any:
+    """Read optional metadata, ignoring values with the wrong type."""
+    if key not in manifest:
+        return default
+    try:
+        return _INTEGRATION_METADATA_VALUES[key](manifest[key])
+    except probatio.Invalid:
+        _LOGGER.warning(
+            "Ignoring %s in manifest.json, %r is not valid", key, manifest[key]
+        )
+        return default
+
+
+@dataclass(frozen=True, slots=True)
+class IntegrationMetadata:
+    """Validated display metadata, independent of integration code and its location."""
+
+    domain: str
+    name: str | None
+    codeowners: tuple[str, ...]
+    config_flow: bool
+
+    @classmethod
+    def from_manifest(cls, manifest: Mapping[str, Any]) -> IntegrationMetadata:
+        """Read metadata from a local or downloaded manifest without importing code."""
+        domain = manifest["domain"]
+        if not isinstance(domain, str) or not _INTEGRATION_DOMAIN.fullmatch(domain):
+            raise ValueError(f"Invalid integration domain: {domain!r}")
+        return cls(
+            domain=domain,
+            name=_integration_metadata_value(manifest, "name", None),
+            codeowners=tuple(_integration_metadata_value(manifest, "codeowners", [])),
+            config_flow=_integration_metadata_value(manifest, "config_flow", False),
+        )
+
+
+def is_valid_custom_integration_version(version: Any) -> bool:
+    """Return whether a manifest version can be loaded as a custom integration."""
+    if not isinstance(version, str):
+        return False
+    try:
+        AwesomeVersion(
+            version,
+            ensure_strategy=[
+                AwesomeVersionStrategy.CALVER,
+                AwesomeVersionStrategy.SEMVER,
+                AwesomeVersionStrategy.SIMPLEVER,
+                AwesomeVersionStrategy.BUILDVER,
+                AwesomeVersionStrategy.PEP440,
+            ],
+        )
+    except AwesomeVersionException:
+        return False
+    return True
 
 
 def async_setup(hass: HomeAssistant) -> None:
@@ -718,8 +785,8 @@ class Integration:
                 continue
 
             try:
-                manifest = cast(Manifest, json_loads(manifest_path.read_text()))
-            except JSON_DECODE_EXCEPTIONS as err:
+                manifest = cast(Manifest, json_loads_object(manifest_path.read_text()))
+            except ValueError as err:
                 _LOGGER.error(
                     "Error parsing manifest.json file at %s: %s", manifest_path, err
                 )
@@ -729,13 +796,17 @@ class Integration:
             # Avoid the listdir for virtual integrations
             # as they cannot have any platforms
             is_virtual = manifest.get("integration_type") == "virtual"
-            integration = cls(
-                hass,
-                f"{root_module.__name__}.{domain}",
-                file_path,
-                manifest,
-                None if is_virtual else set(os.listdir(file_path)),
-            )
+            try:
+                integration = cls(
+                    hass,
+                    f"{root_module.__name__}.{domain}",
+                    file_path,
+                    manifest,
+                    None if is_virtual else set(os.listdir(file_path)),
+                )
+            except (KeyError, ValueError) as err:
+                _LOGGER.error("Invalid metadata in %s: %s", manifest_path, err)
+                continue
 
             if not integration.import_executor:
                 _LOGGER.warning(IMPORT_EVENT_LOOP_WARNING, integration.domain)
@@ -760,7 +831,8 @@ class Integration:
 
             _LOGGER.warning(CUSTOM_WARNING, integration.domain)
 
-            if integration.version is None:
+            version = manifest.get("version")
+            if version is None:
                 _LOGGER.error(
                     (
                         "The custom integration '%s' does not have a version key in the"
@@ -772,18 +844,7 @@ class Integration:
                     integration.domain,
                 )
                 return None
-            try:
-                AwesomeVersion(
-                    integration.version,
-                    ensure_strategy=[
-                        AwesomeVersionStrategy.CALVER,
-                        AwesomeVersionStrategy.SEMVER,
-                        AwesomeVersionStrategy.SIMPLEVER,
-                        AwesomeVersionStrategy.BUILDVER,
-                        AwesomeVersionStrategy.PEP440,
-                    ],
-                )
-            except AwesomeVersionException:
+            if not is_valid_custom_integration_version(version):
                 _LOGGER.error(
                     (
                         "The custom integration '%s' does not have a valid version key"
@@ -793,12 +854,12 @@ class Integration:
                         " for more details"
                     ),
                     integration.domain,
-                    integration.version,
+                    version,
                 )
                 return None
 
             if blocked := BLOCKED_CUSTOM_INTEGRATIONS.get(integration.domain):
-                if _version_blocked(integration.version, blocked):
+                if _version_blocked(AwesomeVersion(version), blocked):
                     _LOGGER.error(
                         (
                             "Version %s of custom integration '%s' %s and was blocked "
@@ -828,6 +889,7 @@ class Integration:
         self.pkg_path = pkg_path
         self.file_path = file_path
         self.manifest = manifest
+        self.metadata = IntegrationMetadata.from_manifest(manifest)
         self.logger = logging.getLogger(pkg_path)
         manifest["is_built_in"] = self.is_built_in
         manifest["overwrites_built_in"] = self.overwrites_built_in
@@ -853,7 +915,11 @@ class Integration:
     @cached_property
     def name(self) -> str:
         """Return name."""
-        return self.manifest["name"]
+        return (
+            self.metadata.name
+            if self.metadata.name is not None
+            else self.metadata.domain
+        )
 
     @cached_property
     def disabled(self) -> str | None:
@@ -863,7 +929,7 @@ class Integration:
     @cached_property
     def domain(self) -> str:
         """Return domain."""
-        return self.manifest["domain"]
+        return self.metadata.domain
 
     @cached_property
     def dependencies(self) -> list[str]:
@@ -883,7 +949,7 @@ class Integration:
     @cached_property
     def config_flow(self) -> bool:
         """Return config_flow."""
-        return self.manifest.get("config_flow") or False
+        return self.metadata.config_flow
 
     @cached_property
     def documentation(self) -> str | None:

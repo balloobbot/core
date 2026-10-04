@@ -5,6 +5,7 @@ import os
 import pathlib
 import sys
 import threading
+from types import ModuleType
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -2293,3 +2294,103 @@ async def test_async_get_integrations_multiple_non_existent(
     ):
         integrations = await loader.async_get_integrations(hass, ["does_not_exist"])
     assert integrations["does_not_exist"] is integration
+
+
+@pytest.mark.parametrize(
+    "version",
+    ["2026.10.1", "1.2.3", "1.2", "1.2.3.4", "1.2.3rc1"],
+)
+def test_custom_manifest_version_formats(version: str) -> None:
+    """Loader and installer share the accepted custom-version formats."""
+    assert loader.is_valid_custom_integration_version(version)
+
+
+@pytest.mark.parametrize("version", [None, 1, True, [], {}, "", "bad"])
+def test_custom_manifest_version_invalid(version: Any) -> None:
+    """Malformed version values are rejected without coercion."""
+    assert not loader.is_valid_custom_integration_version(version)
+
+
+@pytest.mark.parametrize("domain", ["../other", "test\n", "", None, 42])
+def test_integration_metadata_invalid_domain(domain: Any) -> None:
+    """Metadata rejects unsafe or non-string domains."""
+    with pytest.raises(ValueError, match="Invalid integration domain"):
+        loader.IntegrationMetadata.from_manifest({"domain": domain})
+
+
+async def test_metadata_matches_loader_without_import(hass: HomeAssistant) -> None:
+    """Downloaded and local manifests produce the same immutable display metadata."""
+    manifest: loader.Manifest = {
+        "domain": "metadata_test",
+        "name": "Metadata Test",
+        "config_flow": True,
+        "codeowners": ["@owner"],
+        "version": "1.2.3",
+    }
+    metadata = loader.IntegrationMetadata.from_manifest(manifest)
+    with patch(
+        "homeassistant.loader.importlib.import_module", side_effect=AssertionError
+    ):
+        integration = loader.Integration(
+            hass,
+            "custom_components.metadata_test",
+            pathlib.Path("metadata_test"),
+            manifest,
+        )
+        assert integration.metadata == metadata
+        assert (integration.domain, integration.name, integration.config_flow) == (
+            metadata.domain,
+            metadata.name,
+            metadata.config_flow,
+        )
+    manifest["codeowners"].append("@another")
+    manifest["name"] = "Changed"
+    assert metadata.codeowners == ("@owner",)
+    assert metadata.name == "Metadata Test"
+
+
+@pytest.mark.parametrize(
+    "manifest",
+    [[], {"domain": "../other"}, {"domain": "test", "version": True}],
+)
+async def test_resolve_invalid_manifest_metadata(
+    hass: HomeAssistant, tmp_path: pathlib.Path, manifest: Any
+) -> None:
+    """Malformed on-disk metadata cannot crash custom integration discovery."""
+
+    def write_manifest() -> None:
+        directory = tmp_path / "test"
+        directory.mkdir()
+        (directory / "manifest.json").write_text(json_dumps(manifest))
+
+    await hass.async_add_executor_job(write_manifest)
+    root = ModuleType("custom_components")
+    root.__path__ = [str(tmp_path)]
+    assert (
+        await hass.async_add_executor_job(
+            loader.Integration.resolve_from_root, hass, root, "test"
+        )
+        is None
+    )
+
+
+async def test_loader_uses_validated_optional_metadata(hass: HomeAssistant) -> None:
+    """Invalid display fields cannot change picker types or enable a config flow."""
+    manifest = {
+        "domain": "test",
+        "name": 42,
+        "config_flow": "false",
+        "codeowners": [42],
+    }
+    metadata = loader.IntegrationMetadata.from_manifest(manifest)
+    assert metadata == loader.IntegrationMetadata(
+        domain="test", name=None, config_flow=False, codeowners=()
+    )
+    integration = loader.Integration(
+        hass,
+        "custom_components.test",
+        pathlib.Path("test"),
+        manifest,  # type: ignore[arg-type]
+    )
+    assert integration.config_flow is False
+    assert integration.name == "test"

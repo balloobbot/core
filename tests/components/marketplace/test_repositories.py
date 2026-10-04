@@ -1859,6 +1859,7 @@ async def test_integration_manifest_missing_key(
     [
         pytest.param("../../evil", id="traversal"),
         pytest.param("with/slash", id="slash"),
+        pytest.param("example\n", id="trailing_newline"),
         pytest.param("Example", id="uppercase"),
         pytest.param("", id="empty"),
         pytest.param(1337, id="not_a_string"),
