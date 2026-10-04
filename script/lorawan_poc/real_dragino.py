@@ -1,7 +1,7 @@
 """Opt-in real-server test, deliberately outside the HA test suite.
 
 Run from Core with:
-  uv run --no-sync pytest -p tests.conftest script/lorawan_poc/real_stack.py -s
+  PYTHONPATH=. uv run --no-sync python -m pytest -p tests.conftest script/lorawan_poc/real_dragino.py -s
 Requires the isolated server and simulator described in README.md.
 """
 
@@ -148,7 +148,7 @@ async def test_real_dragino_stack(hass: HomeAssistant) -> None:
         )
         assert setup_flow["type"] == FlowResultType.CREATE_ENTRY
         provider = setup_flow["result"]
-        await hass.async_block_till_done()
+        await hass.async_block_till_done(wait_background_tasks=True)
         assert (
             provider.runtime_data.connection.devices[
                 "0201010101010102"
@@ -162,7 +162,7 @@ async def test_real_dragino_stack(hass: HomeAssistant) -> None:
         )
         result = await hass.config_entries.flow.async_configure(flow["flow_id"], {})
         vendor = result["result"]
-        await hass.async_block_till_done()
+        await hass.async_block_till_done(wait_background_tasks=True)
         assert hass.states.get("switch.workshop_relay_1").state == "unknown"
         # Let the initial stream attach before sending the real radio frames.
         await asyncio.sleep(1)
@@ -197,9 +197,9 @@ async def test_real_dragino_stack(hass: HomeAssistant) -> None:
             provider, data={**provider.data, "api_key": writable.token}
         )
         assert await hass.config_entries.async_reload(provider.entry_id)
-        await hass.async_block_till_done()
+        await hass.async_block_till_done(wait_background_tasks=True)
         assert await hass.config_entries.async_reload(vendor.entry_id)
-        await hass.async_block_till_done()
+        await hass.async_block_till_done(wait_background_tasks=True)
         for entity, action, expected in [
             ("switch.workshop_relay_1", "turn_on", "on"),
             ("switch.workshop_relay_2", "turn_on", "on"),
@@ -253,7 +253,7 @@ async def test_real_dragino_stack(hass: HomeAssistant) -> None:
             api.DeleteDeviceRequest(dev_eui="0201010101010102"), metadata=metadata
         )
         await provider.runtime_data.connection.refresh()
-        await hass.async_block_till_done()
+        await hass.async_block_till_done(wait_background_tasks=True)
         assert not vendor.runtime_data.collection.devices
         print("PASS: server device deletion removed the vendor model")
     finally:

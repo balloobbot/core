@@ -1,6 +1,6 @@
 # LoRaWAN proof of concept
 
-The POC uses `lorawan-connection[chirpstack]==0.8.0` from PyPI.
+The POC uses `lorawan-connection[chirpstack]==0.9.0` from PyPI.
 It includes collection-managed subscriptions and a restricted consumer connection.
 
 This worktree adds `lorawan`, `sensecap`, and `dragino` integrations. It connects to an
@@ -23,7 +23,7 @@ are also available on the proposal website.
 
 1. Run `script/setup` in this worktree. For direct test runs, install the
    integration dependencies with
-   `uv pip install "lorawan-connection[chirpstack]==0.8.0"`.
+   `uv pip install "lorawan-connection[chirpstack]==0.9.0"`.
    HA installs the package and its backend dependencies from the LoRaWAN manifest when setting up the integration.
 2. On ChirpStack, import the current device-profile catalog. Assign the **global
    SenseCAP S2101 catalog profile** for the device's radio region. A custom
@@ -109,7 +109,8 @@ await models.async_setup()
 ones. Each device has one `DataUpdateCoordinator`, shared across its entities and platforms.
 The coordinator listens to model updates and shuts down when its model leaves the
 collection, including during unload. Entities inherit `lorawan.LoRaWANEntity`,
-which handles device removal and preserves registry records.
+which handles model updates and late entity additions. Collection callbacks remove
+devices through the device registry, including startup reconciliation for offline removals.
 Resolve the restricted connection with `lorawan.get_connection(hass, provider_entry_id)`.
 Attach a reload listener with `connection.on_disconnect(callback)`. The collection
 selects its vendors and owns its subscription; closing it leaves the connection open.
@@ -136,11 +137,10 @@ available. Rejected credentials trigger the provider's reauthentication flow.
 Sleeping sensors keep their last readings; a transport disconnect is different.
 Missed readings are acceptable; HA does not backfill historical state. ChirpStack’s
 current stream also sends retained events when opened. Timestamp filtering drops
-older events, assuming synchronized HA and ChirpStack clocks. Library main captures
+older events, assuming synchronized HA and ChirpStack clocks. The backend captures
 the cutoff when each device stream opens, minus five seconds, including devices
 discovered later. Remove this workaround once retained delivery can be disabled.
-This branch keeps published 0.8.0, whose cutoff is connection creation time, until
-the next authorized release. A server-side live-only option would remove the clock
+A server-side live-only option would remove the clock
 assumption. There is no two-second startup filter.
 
 ## Try the device-library CLI
@@ -157,7 +157,7 @@ The command watches decoded state. Add `--list` to list devices and exit, or
 The helper selects models, builds the collection, and observes state automatically.
 Network operations are async, and key-file reads run in a worker thread.
 Event handling, model notifications, and CLI printing remain synchronous.
-The standalone Python library will expose the same command under its package name.
+A published vendor library can expose the same command under its package name.
 
 ## Tests
 
@@ -299,3 +299,17 @@ uv run --no-sync python -m homeassistant.components.dragino._vendor.dragino_lora
 
 Protocol: https://wiki.dragino.com/docs/LoRaWAN-End-Node/io-controllers-sensor-nodes/lt-22222-l/
 Catalog: https://github.com/chirpstack/chirpstack-device-profiles/blob/master/vendors/dragino/devices/lt-22222-l.toml
+
+## Device removal
+
+Collection callbacks remove devices through the HA device registry. This also removes
+active entities and entity registry records, including disabled entities. After a
+successful collection setup, the integration removes registry devices absent from
+the current collection. This catches removals while HA was offline. Failed setup
+and ordinary unload preserve registry records.
+
+Compare vendored examples with the library checkout:
+
+```sh
+uv run --no-sync python script/lorawan_poc/check_vendor_examples.py ../lorawan-connection
+```

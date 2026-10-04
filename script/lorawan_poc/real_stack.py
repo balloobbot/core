@@ -1,7 +1,7 @@
 """Opt-in real-server test, deliberately outside the HA test suite.
 
 Run from Core with:
-  uv run --no-sync pytest -p tests.conftest script/lorawan_poc/real_stack.py -s
+  PYTHONPATH=. uv run --no-sync python -m pytest -p tests.conftest script/lorawan_poc/real_stack.py -s
 Requires the isolated server and simulator described in README.md.
 """
 
@@ -16,7 +16,7 @@ from chirpstack_api import api, common
 import grpc
 import pytest
 
-from homeassistant.components.sensecap._vendor.sensecap_lorawan import S2101_MODEL_ID
+from homeassistant.components.sensecap._vendor.sensecap_lorawan import S2101
 from homeassistant.config_entries import SOURCE_USER, ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
@@ -136,7 +136,7 @@ async def test_real_stack(hass: HomeAssistant) -> None:
         ).id
         profiles = await profile_api.List(
             api.ListDeviceProfilesRequest(
-                global_only=True, device_id=S2101_MODEL_ID, limit=100
+                global_only=True, device_id=S2101.catalog_model_id, limit=100
             ),
             metadata=metadata,
         )
@@ -242,12 +242,12 @@ async def test_real_stack(hass: HomeAssistant) -> None:
         )
         assert setup_flow["type"] == FlowResultType.CREATE_ENTRY
         provider = setup_flow["result"]
-        await hass.async_block_till_done()
+        await hass.async_block_till_done(wait_background_tasks=True)
         assert (
             provider.runtime_data.connection.devices[
                 "0201010101010101"
             ].catalog_model_id
-            == S2101_MODEL_ID
+            == S2101.catalog_model_id
         )
         flow = next(
             flow
@@ -256,7 +256,7 @@ async def test_real_stack(hass: HomeAssistant) -> None:
         )
         result = await hass.config_entries.flow.async_configure(flow["flow_id"], {})
         vendor = result["result"]
-        await hass.async_block_till_done()
+        await hass.async_block_till_done(wait_background_tasks=True)
         assert hass.states.get("sensor.greenhouse_temperature").state == "unknown"
         # Let the initial stream attach before sending the real radio frames.
         await asyncio.sleep(1)
@@ -288,9 +288,9 @@ async def test_real_stack(hass: HomeAssistant) -> None:
         )
         # Reload keeps the network and physical device identities unchanged.
         assert await hass.config_entries.async_reload(provider.entry_id)
-        await hass.async_block_till_done()
+        await hass.async_block_till_done(wait_background_tasks=True)
         assert await hass.config_entries.async_reload(vendor.entry_id)
-        await hass.async_block_till_done()
+        await hass.async_block_till_done(wait_background_tasks=True)
         await asyncio.sleep(2)
         assert vendor.data["network_id"] == provider.data["network_id"]
         assert "0201010101010101" in vendor.runtime_data.collection.devices
@@ -319,7 +319,7 @@ async def test_real_stack(hass: HomeAssistant) -> None:
             api.DeleteDeviceRequest(dev_eui="0201010101010101"), metadata=metadata
         )
         await provider.runtime_data.connection.refresh()
-        await hass.async_block_till_done()
+        await hass.async_block_till_done(wait_background_tasks=True)
         assert not vendor.runtime_data.collection.devices
         print("PASS: server device deletion removed the vendor model")
     finally:

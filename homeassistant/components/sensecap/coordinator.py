@@ -16,6 +16,7 @@ class SenseCapCoordinator(DataUpdateCoordinator[S2101]):
 
     def __init__(self, hass: HomeAssistant, device: S2101) -> None:
         """Subscribe once to the library model."""
+        # The collection retires coordinators before config-entry unload.
         super().__init__(hass, _LOGGER, config_entry=None, name=device.descriptor.name)
         self.async_set_updated_data(device)
         self._unsubscribe = device.add_update_listener(self._async_device_updated)

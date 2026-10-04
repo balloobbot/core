@@ -6,6 +6,7 @@ from typing import Any
 import probatio
 
 from homeassistant.components import websocket_api
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
 
 from .const import DOMAIN
@@ -31,7 +32,11 @@ async def websocket_devices(
 ) -> None:
     """Return device descriptors, support reasons, and provider availability."""
     entry = hass.config_entries.async_get_entry(msg["entry_id"])
-    if entry is None or entry.domain != DOMAIN or not hasattr(entry, "runtime_data"):
+    if (
+        entry is None
+        or entry.domain != DOMAIN
+        or entry.state is not ConfigEntryState.LOADED
+    ):
         connection.send_error(msg["id"], "not_found", "LoRaWAN network is not loaded")
         return
     runtime = entry.runtime_data

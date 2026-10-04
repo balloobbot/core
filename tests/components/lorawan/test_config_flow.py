@@ -28,7 +28,7 @@ async def test_global_key(hass: HomeAssistant, mock_connection: Mock) -> None:
     assert result["data"]["tenant_id"] == "tenant"
     assert result["data"]["network_id"]
     mock_connection.inventory.assert_awaited_once()
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
 
 
 async def test_scoped_key(hass: HomeAssistant, mock_connection: Mock) -> None:
@@ -82,7 +82,7 @@ async def test_reauth(
     assert result["reason"] == "reauth_successful"
     assert provider_entry.data["api_key"] == "replacement"
     assert provider_entry.data["network_id"] == "network"
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
 
 
 async def test_initial_form(hass: HomeAssistant) -> None:
@@ -248,7 +248,7 @@ async def test_reauth_rejected_inventory(
 
 async def test_duplicate_network(hass: HomeAssistant, mock_connection: Mock) -> None:
     """The same endpoint and tenant cannot create another provider entry."""
-    entry = MockConfigEntry(domain="lorawan", unique_id="http://server:8080:tenant")
+    entry = MockConfigEntry(domain="lorawan", unique_id="tenant")
     entry.add_to_hass(hass)
     result = await hass.config_entries.flow.async_init(
         "lorawan",
@@ -256,3 +256,32 @@ async def test_duplicate_network(hass: HomeAssistant, mock_connection: Mock) -> 
         data={"endpoint": "http://server:8080", "api_key": "secret"},
     )
     assert result["reason"] == "already_configured"
+
+
+async def test_reenter_key_after_tenant_auth_failure(
+    hass: HomeAssistant, mock_connection: Mock
+) -> None:
+    """A bad key can be corrected without abandoning the config flow."""
+    mock_connection.tenants.side_effect = grpc.aio.AioRpcError(
+        grpc.StatusCode.UNAUTHENTICATED, (), (), "Rejected"
+    )
+    result = await hass.config_entries.flow.async_init(
+        "lorawan",
+        context={"source": SOURCE_USER},
+        data={"endpoint": "http://server:8080", "api_key": "wrong"},
+    )
+    assert result["step_id"] == "tenant"
+    mock_connection.applications.side_effect = grpc.aio.AioRpcError(
+        grpc.StatusCode.UNAUTHENTICATED, (), (), "Rejected"
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"tenant_id": "tenant"}
+    )
+    assert result["step_id"] == "user"
+    assert result["errors"] == {"base": "invalid_auth"}
+    mock_connection.tenants.side_effect = None
+    mock_connection.applications.side_effect = None
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"endpoint": "http://server:8080", "api_key": "correct"}
+    )
+    assert result["step_id"] == "applications"

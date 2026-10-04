@@ -2300,6 +2300,8 @@ async def test_get_lorawan(hass: HomeAssistant, vendors: list[int]) -> None:
     """Custom registrations replace built-ins without changing generated data."""
     integration = _get_test_integration(hass, "sensecap", True)
     integration.manifest["lorawan"] = vendors
+    integration.manifest["config_flow"] = True
+    integration.dependencies.append("lorawan")
     with patch(
         "homeassistant.loader.async_get_custom_components",
         return_value={"sensecap": integration},
@@ -2308,3 +2310,20 @@ async def test_get_lorawan(hass: HomeAssistant, vendors: list[int]) -> None:
     assert registrations.get("sensecap", []) == vendors
     assert registrations["dragino"] == [676]
     assert loader.LORAWAN["sensecap"] == [744]
+
+
+@pytest.mark.parametrize(
+    "value", [744, "744", {"vendor": 744}, [True], [-1], [65536], [744, 744]]
+)
+async def test_invalid_lorawan_registration(hass: HomeAssistant, value: object) -> None:
+    """An invalid custom matcher cannot break other vendors' discovery."""
+    integration = _get_test_integration(hass, "sensecap", True)
+    integration.manifest["lorawan"] = value
+    integration.dependencies.append("lorawan")
+    with patch(
+        "homeassistant.loader.async_get_custom_components",
+        return_value={"sensecap": integration},
+    ):
+        registrations = await loader.async_get_lorawan(hass)
+    assert "sensecap" not in registrations
+    assert registrations["dragino"] == [676]

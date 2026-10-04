@@ -5,7 +5,8 @@ from typing import Any, override
 from uuid import uuid4
 
 import grpc
-from lorawan_connection.chirpstack import ChirpStackConnection, ConnectionUnavailable
+from lorawan_connection import ConnectionUnavailable
+from lorawan_connection.chirpstack import ChirpStackConnection
 import probatio
 
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
@@ -29,6 +30,7 @@ class LoRaWANConfigFlow(ConfigFlow, domain=DOMAIN):
     """Discover tenants when the API key allows it; select applications."""
 
     VERSION = 1
+    MINOR_VERSION = 2
 
     def __init__(self) -> None:
         """Initialize pending input."""
@@ -49,7 +51,7 @@ class LoRaWANConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Connect with explicitly selected transport security."""
+        """Connect using the transport selected by the endpoint URL."""
         errors = {}
         if user_input is not None:
             self._input = dict(user_input)
@@ -117,11 +119,25 @@ class LoRaWANConfigFlow(ConfigFlow, domain=DOMAIN):
             finally:
                 await connection.close()
             if not errors:
-                await self.async_set_unique_id(
-                    f"{self._input[CONF_ENDPOINT].rstrip('/').lower()}:{self._input[CONF_TENANT_ID]}"
-                )
+                await self.async_set_unique_id(self._input[CONF_TENANT_ID])
                 self._abort_if_unique_id_configured()
+                self._async_abort_entries_match(
+                    {CONF_TENANT_ID: self._input[CONF_TENANT_ID]}
+                )
                 return await self.async_step_applications()
+        if errors.get("base") == "invalid_auth":
+            return self.async_show_form(
+                step_id="user",
+                data_schema=probatio.Schema(
+                    {
+                        probatio.Required(
+                            CONF_ENDPOINT, default=self._input[CONF_ENDPOINT]
+                        ): str,
+                        probatio.Required(probatio.Secret(CONF_API_KEY)): str,
+                    }
+                ),
+                errors=errors,
+            )
         selector = (
             SelectSelector(
                 SelectSelectorConfig(

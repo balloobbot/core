@@ -20,7 +20,7 @@ import pytest
 
 from homeassistant.components.dragino._vendor.dragino_lorawan import DraginoDevices
 from homeassistant.components.sensecap._vendor.sensecap_lorawan import (
-    S2101_MODEL_ID,
+    S2101,
     SenseCapDeviceCollection,
     decode_s2101,
 )
@@ -35,7 +35,7 @@ DESCRIPTOR = DeviceDescriptor(
     "Greenhouse",
     "application",
     "profile",
-    S2101_MODEL_ID,
+    S2101.catalog_model_id,
     744,
 )
 PAYLOAD = bytes.fromhex("01011098530000010210A87A0000AF51")
@@ -106,7 +106,7 @@ def test_zero_copy_payload_and_partial_state(generated: bool) -> None:
     assert device.humidity == 31.4
     listener.assert_called_once()
     collection.handle_event(event)
-    listener.assert_called_once()
+    assert listener.call_count == 2
     partial = payload_type(data=bytes.fromhex("010110F0D8FFFF0000"), f_port=1)
     collection.handle_event(
         replace(event, received_at=NOW + timedelta(seconds=1), data=partial)

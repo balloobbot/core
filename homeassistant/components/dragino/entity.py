@@ -19,7 +19,7 @@ def async_setup_entities(
     async_add_entities: AddConfigEntryEntitiesCallback,
     factory: Callable[[DraginoCoordinator], list[DraginoEntity]],
 ) -> None:
-    """Add existing and future models and retire entities with their model."""
+    """Add entities for existing and future models."""
 
     @callback
     def added(device: LT22222) -> None:

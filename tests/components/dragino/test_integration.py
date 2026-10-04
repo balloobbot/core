@@ -54,7 +54,7 @@ async def setup_dragino(
     mock_connection.async_send_downlink = AsyncMock(return_value="queue-id")
     mock_connection.devices = {DESCRIPTOR.dev_eui: DESCRIPTOR}
     assert await hass.config_entries.async_setup(provider_entry.entry_id)
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     flows = [
         flow
         for flow in hass.config_entries.flow.async_progress()
@@ -64,7 +64,7 @@ async def setup_dragino(
     flow = flows[0]
     result = await hass.config_entries.flow.async_configure(flow["flow_id"], {})
     vendor = result["result"]
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     emit = mock_connection._emit
 
     async def send(downlink: object) -> str:
@@ -102,7 +102,7 @@ async def test_relay_cycle(
         data=UplinkData(bytes(10) + b"\x41", 2),
     )
     emit(report)
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert hass.states.get("switch.workshop_relay_1").state == "off"
     await hass.services.async_call(
         "switch", "turn_on", {"entity_id": "switch.workshop_relay_1"}, blocking=True
@@ -113,7 +113,7 @@ async def test_relay_cycle(
     assert request.confirmed
     assert hass.states.get("switch.workshop_relay_1").state == "off"
     emit(replace(report, data=UplinkData(bytes(8) + bytes((0x80, 0, 0x41)), 2)))
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert hass.states.get("switch.workshop_relay_1").state == "on"
     assert hass.states.get("switch.workshop_relay_2").state == "off"
     await hass.services.async_call(
@@ -123,7 +123,7 @@ async def test_relay_cycle(
         "031100"
     )
     emit(inventory(EventType.REMOVED))
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert hass.states.get("switch.workshop_relay_1") is None
     assert hass.states.get("switch.workshop_relay_2") is None
 
@@ -145,13 +145,13 @@ async def test_read_only_key(
 
 
 async def test_unavailable_provider(hass: HomeAssistant) -> None:
-    """Retry setup until its provider connects."""
+    """A deleted provider is a permanent setup error."""
     entry = MockConfigEntry(
         domain="dragino", data={"provider_entry_id": "missing", "network_id": "network"}
     )
     entry.add_to_hass(hass)
     assert not await hass.config_entries.async_setup(entry.entry_id)
-    assert entry.state is ConfigEntryState.SETUP_RETRY
+    assert entry.state is ConfigEntryState.SETUP_ERROR
 
 
 async def test_command_waits_for_ack(
@@ -253,7 +253,7 @@ async def test_removed_while_entities_are_added(
     added = replace(inventory(), dev_eui=descriptor.dev_eui, descriptor=descriptor)
     emit(added)
     emit(replace(added, type=EventType.REMOVED))
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert set(hass.states.async_entity_ids()) == original_entities
 
 
@@ -284,9 +284,10 @@ async def test_input_entities(
     )
     emit(report)
     emit(replace(report, data=UplinkData(bytes.fromhex(payload), 2)))
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert {
-        state.entity_id: state.state for state in hass.states.async_all()
+        state.entity_id: {"state": state.state, "attributes": dict(state.attributes)}
+        for state in hass.states.async_all()
     } == snapshot
     assert (
         hass.states.get("sensor.workshop_voltage_1").attributes["unit_of_measurement"]
@@ -297,7 +298,7 @@ async def test_input_entities(
         == "mA"
     )
     emit(inventory(EventType.REMOVED))
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert not hass.states.async_all()
 
 
@@ -394,7 +395,7 @@ async def test_shared_coordinator(
         )
     refresh.assert_not_called()
     emit(inventory(EventType.REMOVED))
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert not entry.runtime_data.coordinators
     assert not list(coordinator.async_contexts())
 
@@ -408,14 +409,14 @@ async def test_removed_coordinators_are_released(
     before = len(entry._on_unload)
     reference = weakref.ref(entry.runtime_data.coordinators[DESCRIPTOR.dev_eui])
     emit(inventory(EventType.REMOVED))
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     gc.collect()
     assert reference() is None
     emit(inventory())
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     reference = weakref.ref(entry.runtime_data.coordinators[DESCRIPTOR.dev_eui])
     emit(inventory(EventType.REMOVED))
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     gc.collect()
     assert reference() is None
     assert len(entry._on_unload) == before
@@ -430,6 +431,6 @@ async def test_shutdown_does_not_reload_vendors(
     hass.set_state(CoreState.stopping)
     with patch.object(hass.config_entries, "async_schedule_reload") as reload:
         hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)
-        await hass.async_block_till_done()
+        await hass.async_block_till_done(wait_background_tasks=True)
     assert not mock_connection.available
     reload.assert_not_called()

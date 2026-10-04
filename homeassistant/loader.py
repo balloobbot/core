@@ -672,8 +672,26 @@ async def async_get_lorawan(hass: HomeAssistant) -> dict[str, list[int]]:
     integrations = await async_get_custom_components(hass)
     for integration in integrations.values():
         registrations.pop(integration.domain, None)
-        if integration.lorawan:
-            registrations[integration.domain] = integration.lorawan
+        vendors = integration.lorawan
+        if vendors is None:
+            continue
+        if (
+            not isinstance(vendors, list)
+            or not vendors
+            or any(
+                type(vendor) is not int or not 0 <= vendor <= 65535
+                for vendor in vendors
+            )
+            or len(set(vendors)) != len(vendors)
+            or not integration.config_flow
+            or "lorawan" not in integration.dependencies
+        ):
+            _LOGGER.warning(
+                "Ignoring invalid LoRaWAN discovery registration for %s",
+                integration.domain,
+            )
+            continue
+        registrations[integration.domain] = vendors
     return registrations
 
 

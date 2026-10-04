@@ -10,6 +10,7 @@ import pytest
 from script.hassfest.lorawan import generate_and_validate
 from script.hassfest.manifest import INTEGRATION_MANIFEST_SCHEMA
 from script.hassfest.model import Config, Integration
+from script.hassfest.quality_scale_validation import discovery
 
 
 @pytest.mark.parametrize("vendors", [[], [-1], [65536], [744, 744], ["744"]])
@@ -56,3 +57,10 @@ def test_registration_requirements(
     source = generate_and_validate({"vendor": integration})
     assert ast.literal_eval(ast.parse(source).body[1].value) == {"vendor": [744, 676]}
     assert len(integration.errors) == error_count
+
+
+def test_discovery_quality_rule(tmp_path: Path, config: Config) -> None:
+    """The LoRaWAN manifest hook satisfies HA's discovery quality rule."""
+    (tmp_path / "config_flow.py").write_text("# Config flow is validated separately.\n")
+    integration = Integration(tmp_path, _config=config, _manifest={"lorawan": [744]})
+    assert discovery.validate(config, integration, rules_done={"discovery"}) is None

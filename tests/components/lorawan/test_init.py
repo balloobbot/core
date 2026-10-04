@@ -31,7 +31,7 @@ async def test_provider_subscription(
             "async_send_downlink",
             "on_disconnect",
         }
-        await hass.async_block_till_done()
+        await hass.async_block_till_done(wait_background_tasks=True)
         discovery.assert_awaited_once()
         consumer, disconnected = Mock(), Mock()
         unsubscribe_disconnect = connection.on_disconnect(disconnected)
@@ -78,7 +78,7 @@ async def test_unavailable_subscription(
     """Unloaded and missing providers cannot accept subscriptions."""
     with pytest.raises(ConnectionUnavailable):
         lorawan.get_connection(hass, provider_entry.entry_id)
-    with pytest.raises(ConnectionUnavailable):
+    with pytest.raises(lorawan.ProviderNotFound):
         lorawan.get_connection(hass, "missing")
 
 
@@ -124,7 +124,7 @@ async def test_home_assistant_shutdown(
     hass.set_state(CoreState.stopping)
     with patch.object(hass.config_entries, "async_schedule_reload") as reload:
         hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)
-        await hass.async_block_till_done()
+        await hass.async_block_till_done(wait_background_tasks=True)
     mock_connection.close.assert_awaited_once()
     assert not mock_connection.available
     reload.assert_not_called()
@@ -145,9 +145,41 @@ async def test_manifest_vendor_discovery(
         patch.object(hass.config_entries.flow, "async_init", AsyncMock()) as discovery,
     ):
         assert await hass.config_entries.async_setup(provider_entry.entry_id)
-        await hass.async_block_till_done()
+        await hass.async_block_till_done(wait_background_tasks=True)
         assert [call.args[0] for call in discovery.await_args_list] == ["one", "two"]
         mock_connection._emit(inventory(DESCRIPTOR, EventType.UPDATED))
-        await hass.async_block_till_done()
-        assert discovery.await_count == 2
+        await hass.async_block_till_done(wait_background_tasks=True)
+        assert discovery.await_count == 4
         await hass.config_entries.async_unload(provider_entry.entry_id)
+
+
+async def test_dismissed_discovery_returns(
+    hass: HomeAssistant, provider_entry: MockConfigEntry, mock_connection: Mock
+) -> None:
+    """Dismissal allows rediscovery; an in-progress flow remains deduplicated."""
+    mock_connection.devices = {DESCRIPTOR.dev_eui: DESCRIPTOR}
+    assert await hass.config_entries.async_setup(provider_entry.entry_id)
+    await hass.async_block_till_done(wait_background_tasks=True)
+    flows = hass.config_entries.flow.async_progress()
+    assert len(flows) == 1
+    mock_connection._emit(inventory(DESCRIPTOR, EventType.UPDATED))
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert len(hass.config_entries.flow.async_progress()) == 1
+    hass.config_entries.flow.async_abort(flows[0]["flow_id"])
+    mock_connection._emit(inventory(DESCRIPTOR, EventType.UPDATED))
+    await hass.async_block_till_done(wait_background_tasks=True)
+    flows = hass.config_entries.flow.async_progress()
+    assert len(flows) == 1
+    assert flows[0]["handler"] == "sensecap"
+    await hass.config_entries.async_unload(provider_entry.entry_id)
+
+
+async def test_tenant_identity_migration(
+    hass: HomeAssistant, provider_entry: MockConfigEntry, mock_connection: Mock
+) -> None:
+    """Changing the provider unique ID preserves entity network identity."""
+    assert await hass.config_entries.async_setup(provider_entry.entry_id)
+    assert provider_entry.unique_id == "tenant"
+    assert provider_entry.minor_version == 2
+    assert provider_entry.data["network_id"] == "network"
+    await hass.config_entries.async_unload(provider_entry.entry_id)

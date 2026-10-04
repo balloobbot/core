@@ -3,19 +3,25 @@
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from lorawan_connection import Connection, DeviceEvent, Downlink, EventType, Unsubscribe
-from lorawan_connection.chirpstack import (
-    AuthenticationError,
-    ChirpStackConnection,
-    ConnectionUnavailable,
+from lorawan_connection import (
+    Connection,
+    ConnectionUnavailable as ConnectionUnavailable,
+    DeviceEvent,
+    Downlink,
+    EventType,
+    Unsubscribe,
 )
+from lorawan_connection.chirpstack import AuthenticationError, ChirpStackConnection
 
-from homeassistant import core
-from homeassistant.config_entries import SOURCE_INTEGRATION_DISCOVERY, ConfigEntry
+from homeassistant.config_entries import (
+    SOURCE_INTEGRATION_DISCOVERY,
+    ConfigEntry,
+    ConfigEntryState,
+)
 from homeassistant.const import CONF_API_KEY, EVENT_HOMEASSISTANT_STOP
-from homeassistant.core import Event, HomeAssistant
+from homeassistant.core import Event, HomeAssistant, callback as hass_callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
-from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import config_validation as cv, discovery_flow
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_lorawan
 
@@ -30,6 +36,10 @@ from .entity import LoRaWANEntity as LoRaWANEntity
 from .websocket_api import async_register
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+
+class ProviderNotFound(Exception):
+    """The selected LoRaWAN config entry has been removed."""
 
 
 class _ConsumerConnection:
@@ -68,7 +78,6 @@ class LoRaWANData:
     integrations: dict[str, list[int]]
     consumer: Connection = field(init=False)
     unsubscribe_disconnect: Unsubscribe | None = None
-    discovered: set[str] = field(default_factory=set)
 
     def __post_init__(self) -> None:
         """Create the restricted consumer interface."""
@@ -78,16 +87,16 @@ class LoRaWANData:
 type LoRaWANConfigEntry = ConfigEntry[LoRaWANData]
 
 
-@core.callback
+@hass_callback
 def get_connection(hass: HomeAssistant, provider_entry_id: str) -> Connection:
     """Return the provider's connected network for a device collection."""
     entry: LoRaWANConfigEntry | None = hass.config_entries.async_get_entry(
         provider_entry_id
     )
+    if entry is None or entry.domain != DOMAIN:
+        raise ProviderNotFound("LoRaWAN provider entry no longer exists")
     if (
-        entry is None
-        or entry.domain != DOMAIN
-        or not hasattr(entry, "runtime_data")
+        entry.state is not ConfigEntryState.LOADED
         or not entry.runtime_data.connection.available
     ):
         raise ConnectionUnavailable("LoRaWAN provider is not connected")
@@ -113,33 +122,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: LoRaWANConfigEntry) -> b
         connection, await async_get_lorawan(hass)
     )
 
-    @core.callback
+    @hass_callback
     def handle_event(event: DeviceEvent) -> None:
-        if (
-            event.type not in (EventType.ADDED, EventType.UPDATED)
-            or (descriptor := event.descriptor) is None
-        ):
+        if event.type == EventType.REMOVED:
+            return
+        descriptor = event.descriptor or connection.devices.get(event.dev_eui)
+        if descriptor is None:
             return
         for domain, vendors in runtime.integrations.items():
-            if descriptor.vendor_id not in vendors or domain in runtime.discovered:
+            if descriptor.vendor_id not in vendors:
                 continue
-            runtime.discovered.add(domain)
-            entry.async_create_task(
+            discovery_flow.async_create_flow(
                 hass,
-                hass.config_entries.flow.async_init(
-                    domain,
-                    context={"source": SOURCE_INTEGRATION_DISCOVERY},
-                    data={
-                        "provider_entry_id": entry.entry_id,
-                        CONF_NETWORK_ID: entry.data[CONF_NETWORK_ID],
-                    },
-                ),
-                f"Discover {domain}",
+                domain,
+                context={"source": SOURCE_INTEGRATION_DISCOVERY},
+                data={
+                    "provider_entry_id": entry.entry_id,
+                    CONF_NETWORK_ID: entry.data[CONF_NETWORK_ID],
+                },
             )
 
     async def async_stop(_: Event) -> None:
         """Close the transport before Home Assistant stops its event loop."""
-        await async_unload_entry(hass, entry)
+        await connection.close()
 
     try:
         await connection.async_connect()
@@ -150,7 +155,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: LoRaWANConfigEntry) -> b
                 else hass.config_entries.async_schedule_reload(entry.entry_id)
             )
         )
-        entry.async_on_unload(runtime.unsubscribe_disconnect)
         entry.async_on_unload(
             await connection.async_subscribe(vendor_ids=None, callback=handle_event)
         )
@@ -169,4 +173,15 @@ async def async_unload_entry(hass: HomeAssistant, entry: LoRaWANConfigEntry) -> 
     if entry.runtime_data.unsubscribe_disconnect is not None:
         entry.runtime_data.unsubscribe_disconnect()
     await entry.runtime_data.connection.close()
+    return True
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: LoRaWANConfigEntry) -> bool:
+    """Use tenant identity while preserving existing device identifiers."""
+    if entry.version != 1:
+        return False
+    if entry.minor_version < 2:
+        hass.config_entries.async_update_entry(
+            entry, unique_id=entry.data[CONF_TENANT_ID], minor_version=2
+        )
     return True

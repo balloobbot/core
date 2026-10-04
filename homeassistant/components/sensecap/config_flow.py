@@ -26,7 +26,9 @@ class SenseCapConfigFlow(ConfigFlow, domain=DOMAIN):
         """Select a provider, skipping the chooser for a single network."""
         providers = {
             entry.entry_id: entry
-            for entry in self.hass.config_entries.async_entries("lorawan")
+            for entry in self.hass.config_entries.async_entries(
+                "lorawan", include_disabled=False
+            )
         }
         if not providers:
             return self.async_abort(reason="no_provider")
@@ -72,4 +74,5 @@ class SenseCapConfigFlow(ConfigFlow, domain=DOMAIN):
         """Confirm adding supported SenseCAP devices to HA."""
         if user_input is not None:
             return self.async_create_entry(title="SenseCAP", data=self._discovery)
+        self._set_confirm_only()
         return self.async_show_form(step_id="confirm")

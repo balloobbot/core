@@ -1,5 +1,7 @@
 """Sensor mapping from library device state."""
 
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import override
 
 from homeassistant.components.lorawan import LoRaWANEntity
@@ -21,16 +23,25 @@ from .coordinator import SenseCapCoordinator
 PARALLEL_UPDATES = 0
 
 
+@dataclass(frozen=True, kw_only=True)
+class SenseCapSensorDescription(SensorEntityDescription):
+    """Select a typed measurement from the device model."""
+
+    value_fn: Callable[[S2101], float | None]
+
+
 DESCRIPTIONS = (
-    SensorEntityDescription(
+    SenseCapSensorDescription(
         key="temperature",
+        value_fn=lambda device: device.temperature,
         translation_key="temperature",
         device_class=SensorDeviceClass.TEMPERATURE,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         state_class=SensorStateClass.MEASUREMENT,
     ),
-    SensorEntityDescription(
+    SenseCapSensorDescription(
         key="humidity",
+        value_fn=lambda device: device.humidity,
         translation_key="humidity",
         device_class=SensorDeviceClass.HUMIDITY,
         native_unit_of_measurement=PERCENTAGE,
@@ -61,8 +72,10 @@ async def async_setup_entry(
 class SenseCapSensor(LoRaWANEntity[S2101], SensorEntity):
     """Read typed state; decoding and event interpretation belong to the library."""
 
+    entity_description: SenseCapSensorDescription
+
     def __init__(
-        self, coordinator: SenseCapCoordinator, description: SensorEntityDescription
+        self, coordinator: SenseCapCoordinator, description: SenseCapSensorDescription
     ) -> None:
         """Bind one measurement to its model."""
         super().__init__(coordinator)
@@ -81,4 +94,4 @@ class SenseCapSensor(LoRaWANEntity[S2101], SensorEntity):
     @override
     def native_value(self) -> float | None:
         """Return the last observed measurement."""
-        return getattr(self.device, self.entity_description.key)
+        return self.entity_description.value_fn(self.device)

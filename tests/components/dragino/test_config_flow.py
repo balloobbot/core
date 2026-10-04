@@ -46,7 +46,7 @@ async def test_single_provider(hass: HomeAssistant, provider: MockConfigEntry) -
     assert result["step_id"] == "confirm"
     with patch("homeassistant.components.dragino.async_setup_entry", return_value=True):
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
-        await hass.async_block_till_done()
+        await hass.async_block_till_done(wait_background_tasks=True)
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"] == {
         "provider_entry_id": provider.entry_id,
@@ -76,7 +76,7 @@ async def test_multiple_providers(hass: HomeAssistant) -> None:
     assert result["step_id"] == "confirm"
     with patch("homeassistant.components.dragino.async_setup_entry", return_value=True):
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
-        await hass.async_block_till_done()
+        await hass.async_block_till_done(wait_background_tasks=True)
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"] == {
         "provider_entry_id": second.entry_id,
