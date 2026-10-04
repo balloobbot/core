@@ -7,7 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import DraginoConfigEntry
-from ._vendor.dragino_lorawan import LT22222
+from .coordinator import DraginoCoordinator
 from .entity import DraginoEntity, async_setup_entities
 
 
@@ -21,16 +21,18 @@ async def async_setup_entry(
         hass,
         entry,
         async_add_entities,
-        lambda device: [DraginoDigitalInput(device, channel) for channel in (1, 2)],
+        lambda coordinator: [
+            DraginoDigitalInput(coordinator, channel) for channel in (1, 2)
+        ],
     )
 
 
 class DraginoDigitalInput(DraginoEntity, BinarySensorEntity):
     """Read a digital input level; counting modes do not report levels."""
 
-    def __init__(self, device: LT22222, channel: int) -> None:
+    def __init__(self, coordinator: DraginoCoordinator, channel: int) -> None:
         """Bind a digital input channel."""
-        super().__init__(device, "digital_input", channel)
+        super().__init__(coordinator, "digital_input", channel)
 
     @property
     @override

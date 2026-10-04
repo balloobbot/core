@@ -9,6 +9,7 @@ from unittest.mock import Mock
 
 from chirpstack_api import integration
 from lorawan_connection import DeviceDescriptor, DeviceEventData, EventType, UplinkData
+from lorawan_connection.mock import MockConnection
 import pytest
 
 from homeassistant.components.sensecap._vendor.sensecap_lorawan import (
@@ -35,14 +36,12 @@ def inventory(
     descriptor: DeviceDescriptor = DESCRIPTOR, kind: EventType = EventType.ADDED
 ) -> DeviceEventData:
     """Build an inventory fixture."""
-    return DeviceEventData(
-        descriptor.network_id, descriptor.dev_eui, kind, NOW, descriptor
-    )
+    return DeviceEventData(type=kind, received_at=NOW, descriptor=descriptor)
 
 
 def test_collection_lifecycle() -> None:
     """Initial replay, idempotence, independent devices and retirement."""
-    collection = SenseCapDeviceCollection(Mock(network_id="network"))
+    collection = SenseCapDeviceCollection(MockConnection())
     collection.handle_event(inventory())
     added, removed = Mock(), Mock()
     stop = collection.subscribe_device_added(added)
@@ -79,14 +78,18 @@ def test_collection_lifecycle() -> None:
 def test_zero_copy_payload_and_partial_state(generated: bool) -> None:
     """The same model consumes fixture and generated payloads by reference."""
     payload_type = integration.UplinkEvent if generated else UplinkData
-    collection = SenseCapDeviceCollection(Mock(network_id="network"))
+    collection = SenseCapDeviceCollection(MockConnection())
     collection.handle_event(inventory())
     device = collection.devices[DESCRIPTOR.dev_eui]
     listener = Mock()
     stop = device.add_update_listener(listener)
     payload = payload_type(data=PAYLOAD, f_port=1)
     event = DeviceEventData(
-        "network", DESCRIPTOR.dev_eui, EventType.UPLINK, NOW, data=payload
+        network_id="network",
+        dev_eui=DESCRIPTOR.dev_eui,
+        type=EventType.UPLINK,
+        received_at=NOW,
+        data=payload,
     )
     assert event.data is payload
     collection.handle_event(event)
@@ -123,14 +126,14 @@ def test_zero_unknown_fields_and_port() -> None:
         "humidity": 0,
     }
     assert decode_s2101(bytes.fromhex("010700640000000000")) == {}
-    collection = SenseCapDeviceCollection(Mock(network_id="network"))
+    collection = SenseCapDeviceCollection(MockConnection())
     collection.handle_event(inventory())
     collection.handle_event(
         DeviceEventData(
-            "network",
-            DESCRIPTOR.dev_eui,
-            EventType.UPLINK,
-            NOW,
+            network_id="network",
+            dev_eui=DESCRIPTOR.dev_eui,
+            type=EventType.UPLINK,
+            received_at=NOW,
             data=UplinkData(PAYLOAD, 2),
         )
     )
@@ -139,13 +142,13 @@ def test_zero_unknown_fields_and_port() -> None:
 
 def test_unknown_device_network_and_vendor() -> None:
     """Payload, name, or wrong vendor cannot create an unrecognized model."""
-    collection = SenseCapDeviceCollection(Mock(network_id="network"))
+    collection = SenseCapDeviceCollection(MockConnection())
     collection.handle_event(
         DeviceEventData(
-            "network",
-            DESCRIPTOR.dev_eui,
-            EventType.UPLINK,
-            NOW,
+            network_id="network",
+            dev_eui=DESCRIPTOR.dev_eui,
+            type=EventType.UPLINK,
+            received_at=NOW,
             data=UplinkData(PAYLOAD),
         )
     )
@@ -156,7 +159,7 @@ def test_unknown_device_network_and_vendor() -> None:
 
 def test_listener_exception_and_unsubscribe() -> None:
     """One consumer cannot stop another receiving devices."""
-    collection = SenseCapDeviceCollection(Mock(network_id="network"))
+    collection = SenseCapDeviceCollection(MockConnection())
     collection.subscribe_device_added(Mock(side_effect=ValueError))
     listener = Mock()
     collection.subscribe_device_added(listener)
@@ -173,10 +176,14 @@ def test_invalid_eui(eui: str) -> None:
 
 def test_same_millisecond_partial_updates() -> None:
     """Different live readings may share a server receipt timestamp."""
-    collection = SenseCapDeviceCollection(Mock(network_id="network"))
+    collection = SenseCapDeviceCollection(MockConnection())
     collection.handle_event(inventory())
     event = DeviceEventData(
-        "network", DESCRIPTOR.dev_eui, EventType.UPLINK, NOW, data=UplinkData(PAYLOAD)
+        network_id="network",
+        dev_eui=DESCRIPTOR.dev_eui,
+        type=EventType.UPLINK,
+        received_at=NOW,
+        data=UplinkData(PAYLOAD),
     )
     collection.handle_event(event)
     collection.handle_event(

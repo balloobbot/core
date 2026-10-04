@@ -11,7 +11,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import DraginoConfigEntry
-from ._vendor.dragino_lorawan import LT22222
+from .coordinator import DraginoCoordinator
 from .entity import DraginoEntity, async_setup_entities
 
 
@@ -25,8 +25,8 @@ async def async_setup_entry(
         hass,
         entry,
         async_add_entities,
-        lambda device: [
-            DraginoOutput(device, kind, channel)
+        lambda coordinator: [
+            DraginoOutput(coordinator, kind, channel)
             for kind in ("relay", "digital_output")
             for channel in (1, 2)
         ],
@@ -37,10 +37,13 @@ class DraginoOutput(DraginoEntity, SwitchEntity):
     """Read and control one output through the device model."""
 
     def __init__(
-        self, device: LT22222, kind: Literal["relay", "digital_output"], channel: int
+        self,
+        coordinator: DraginoCoordinator,
+        kind: Literal["relay", "digital_output"],
+        channel: int,
     ) -> None:
         """Bind an output channel and its command method."""
-        super().__init__(device, kind, channel)
+        super().__init__(coordinator, kind, channel)
         self.kind = kind
 
     @property

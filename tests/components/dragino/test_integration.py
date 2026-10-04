@@ -19,6 +19,8 @@ from syrupy.assertion import SnapshotAssertion
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.entity_platform import async_get_platforms
+from homeassistant.setup import async_setup_component
 from homeassistant.util import dt as dt_util
 
 from tests.common import MockConfigEntry
@@ -37,7 +39,7 @@ DESCRIPTOR = DeviceDescriptor(
 def inventory(kind: EventType = EventType.ADDED) -> DeviceEventData:
     """Build a catalog inventory event."""
     return DeviceEventData(
-        "network", DESCRIPTOR.dev_eui, kind, dt_util.utcnow(), DESCRIPTOR
+        type=kind, received_at=dt_util.utcnow(), descriptor=DESCRIPTOR
     )
 
 
@@ -65,10 +67,10 @@ async def setup_dragino(
     async def send(downlink: object) -> str:
         emit(
             DeviceEventData(
-                "network",
-                DESCRIPTOR.dev_eui,
-                EventType.ACK,
-                dt_util.utcnow(),
+                network_id="network",
+                dev_eui=DESCRIPTOR.dev_eui,
+                type=EventType.ACK,
+                received_at=dt_util.utcnow(),
                 data=AckData("queue-id", True),
             )
         )
@@ -90,10 +92,10 @@ async def test_relay_cycle(
     assert hass.states.get("switch.workshop_relay_1").state == "unknown"
     assert hass.states.get("switch.workshop_relay_2").state == "unknown"
     report = DeviceEventData(
-        "network",
-        DESCRIPTOR.dev_eui,
-        EventType.UPLINK,
-        dt_util.utcnow(),
+        network_id="network",
+        dev_eui=DESCRIPTOR.dev_eui,
+        type=EventType.UPLINK,
+        received_at=dt_util.utcnow(),
         data=UplinkData(bytes(10) + b"\x41", 2),
     )
     emit(report)
@@ -172,10 +174,10 @@ async def test_command_waits_for_ack(
     assert not command.done()
     emit(
         DeviceEventData(
-            "network",
-            DESCRIPTOR.dev_eui,
-            EventType.UPLINK,
-            dt_util.utcnow(),
+            network_id="network",
+            dev_eui=DESCRIPTOR.dev_eui,
+            type=EventType.UPLINK,
+            received_at=dt_util.utcnow(),
             data=UplinkData(bytes(8) + bytes((0x80, 0, 0x41)), 2),
         )
     )
@@ -183,10 +185,10 @@ async def test_command_waits_for_ack(
     assert not command.done()
     emit(
         DeviceEventData(
-            "network",
-            DESCRIPTOR.dev_eui,
-            EventType.ACK,
-            dt_util.utcnow(),
+            network_id="network",
+            dev_eui=DESCRIPTOR.dev_eui,
+            type=EventType.ACK,
+            received_at=dt_util.utcnow(),
             data=AckData("queue-id", True),
         )
     )
@@ -204,10 +206,10 @@ async def test_command_negative_ack(
     async def send(downlink: object) -> str:
         emit(
             DeviceEventData(
-                "network",
-                DESCRIPTOR.dev_eui,
-                EventType.ACK,
-                dt_util.utcnow(),
+                network_id="network",
+                dev_eui=DESCRIPTOR.dev_eui,
+                type=EventType.ACK,
+                received_at=dt_util.utcnow(),
                 data=AckData("queue-id", False),
             )
         )
@@ -271,10 +273,10 @@ async def test_input_entities(
     """All channels map correctly and mode changes clear inapplicable readings."""
     _, emit = setup_dragino
     report = DeviceEventData(
-        "network",
-        DESCRIPTOR.dev_eui,
-        EventType.UPLINK,
-        dt_util.utcnow(),
+        network_id="network",
+        dev_eui=DESCRIPTOR.dev_eui,
+        type=EventType.UPLINK,
+        received_at=dt_util.utcnow(),
         data=UplinkData(bytes.fromhex("04ab04ac13101300df0041"), 2),
     )
     emit(report)
@@ -355,11 +357,40 @@ async def test_digital_output_commands(
     assert hass.states.get(entity_id).state == "unknown"
     emit(
         DeviceEventData(
-            "network",
-            DESCRIPTOR.dev_eui,
-            EventType.UPLINK,
-            dt_util.utcnow(),
+            network_id="network",
+            dev_eui=DESCRIPTOR.dev_eui,
+            type=EventType.UPLINK,
+            received_at=dt_util.utcnow(),
             data=UplinkData(bytes(8) + bytes((report, 0, 0x41)), 2),
         )
     )
     assert hass.states.get(entity_id).state == expected
+
+
+async def test_shared_coordinator(
+    hass: HomeAssistant,
+    setup_dragino: tuple[MockConfigEntry, Callable],
+) -> None:
+    """All platforms share one subscription, without polling on manual refresh."""
+    assert await async_setup_component(hass, "homeassistant", {})
+    entry, emit = setup_dragino
+    coordinator = entry.runtime_data.coordinators[DESCRIPTOR.dev_eui]
+    entities = [
+        entity
+        for platform in async_get_platforms(hass, "dragino")
+        for entity in platform.entities.values()
+    ]
+    assert len(entities) == 13
+    assert all(entity.coordinator is coordinator for entity in entities)
+    with patch.object(coordinator, "async_request_refresh") as refresh:
+        await hass.services.async_call(
+            "homeassistant",
+            "update_entity",
+            {"entity_id": [entity.entity_id for entity in entities]},
+            blocking=True,
+        )
+    refresh.assert_not_called()
+    emit(inventory(EventType.REMOVED))
+    await hass.async_block_till_done()
+    assert not entry.runtime_data.coordinators
+    assert not list(coordinator.async_contexts())

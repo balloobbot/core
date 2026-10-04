@@ -4,10 +4,11 @@
 # pylint: disable=home-assistant-component-root-import
 
 from dataclasses import replace
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import patch
 
 from lorawan_connection import DeviceEventData, EventType, UplinkData
 from lorawan_connection.chirpstack import ConnectionUnavailable
+from lorawan_connection.mock import MockConnection
 
 from homeassistant.config_entries import SOURCE_INTEGRATION_DISCOVERY, ConfigEntryState
 from homeassistant.core import HomeAssistant
@@ -26,13 +27,7 @@ async def test_sensor_lifecycle(hass: HomeAssistant) -> None:
         data={"provider_entry_id": "provider", "network_id": "network"},
     )
     entry.add_to_hass(hass)
-    stop = Mock()
-
-    async def subscribe(*, vendor_ids: frozenset[int], callback: Mock) -> Mock:
-        callback(inventory())
-        return stop
-
-    connection = Mock(async_subscribe=AsyncMock(side_effect=subscribe))
+    connection = MockConnection([DESCRIPTOR])
     with patch(
         "homeassistant.components.sensecap.lorawan.get_connection",
         return_value=connection,
@@ -41,32 +36,31 @@ async def test_sensor_lifecycle(hass: HomeAssistant) -> None:
         await hass.async_block_till_done()
         assert hass.states.get("sensor.greenhouse_temperature").state == "unknown"
         event = DeviceEventData(
-            "network",
-            DESCRIPTOR.dev_eui,
-            EventType.UPLINK,
-            dt_util.utcnow(),
+            network_id="network",
+            dev_eui=DESCRIPTOR.dev_eui,
+            type=EventType.UPLINK,
+            received_at=dt_util.utcnow(),
             data=UplinkData(PAYLOAD),
         )
-        entry.runtime_data.handle_event(event)
+        connection.emit(event)
         await hass.async_block_till_done()
         assert hass.states.get("sensor.greenhouse_temperature").state == "21.4"
         assert hass.states.get("sensor.greenhouse_humidity").state == "31.4"
         second = replace(DESCRIPTOR, dev_eui="0201010101010102", name="Bedroom")
-        entry.runtime_data.handle_event(inventory(second))
+        connection.emit(inventory(second))
         await hass.async_block_till_done()
         assert hass.states.get("sensor.bedroom_temperature").state == "unknown"
         temporary = replace(DESCRIPTOR, dev_eui="0201010101010103", name="Temporary")
-        entry.runtime_data.handle_event(inventory(temporary))
-        entry.runtime_data.handle_event(inventory(temporary, EventType.REMOVED))
+        connection.emit(inventory(temporary))
+        connection.emit(inventory(temporary, EventType.REMOVED))
         await hass.async_block_till_done()
         assert hass.states.get("sensor.temporary_temperature") is None
         assert hass.states.get("sensor.temporary_humidity") is None
-        entry.runtime_data.handle_event(inventory(DESCRIPTOR, EventType.REMOVED))
+        connection.emit(inventory(DESCRIPTOR, EventType.REMOVED))
         await hass.async_block_till_done()
         assert hass.states.get("sensor.greenhouse_temperature") is None
-        devices = entry.runtime_data
+        devices = entry.runtime_data.collection
         assert await hass.config_entries.async_unload(entry.entry_id)
-        stop.assert_called_once()
         assert not devices.devices
 
 

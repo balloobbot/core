@@ -1,19 +1,30 @@
 """SenseCAP devices on a LoRaWAN provider."""
 
+from dataclasses import dataclass, field
+
 from homeassistant.components import lorawan
 from homeassistant.components.lorawan import ConnectionUnavailable
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 
-from ._vendor.sensecap_lorawan import SenseCapDeviceCollection
+from ._vendor.sensecap_lorawan import S2101, SenseCapDeviceCollection
+from .coordinator import SenseCapCoordinator
 
 DOMAIN = "sensecap"
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
-type SenseCapConfigEntry = ConfigEntry[SenseCapDeviceCollection]
+type SenseCapConfigEntry = ConfigEntry[SenseCapData]
 PLATFORMS = [Platform.SENSOR]
+
+
+@dataclass
+class SenseCapData:
+    """Keep the collection and its shared device coordinators."""
+
+    collection: SenseCapDeviceCollection
+    coordinators: dict[str, SenseCapCoordinator] = field(default_factory=dict)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: SenseCapConfigEntry) -> bool:
@@ -27,7 +38,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: SenseCapConfigEntry) -> 
             lambda: hass.config_entries.async_schedule_reload(entry.entry_id)
         )
     )
-    devices = entry.runtime_data = SenseCapDeviceCollection(connection)
+    devices = SenseCapDeviceCollection(connection)
+    entry.runtime_data = SenseCapData(devices)
+
+    @callback
+    def added(device: S2101) -> None:
+        entry.runtime_data.coordinators[device.descriptor.dev_eui] = (
+            SenseCapCoordinator(hass, entry, device)
+        )
+
+    @callback
+    def removed(device: S2101) -> None:
+        entry.runtime_data.coordinators.pop(device.descriptor.dev_eui, None)
+
+    entry.async_on_unload(devices.subscribe_device_added(added))
+    entry.async_on_unload(devices.subscribe_device_removed(removed))
     entry.async_on_unload(devices.close)
     try:
         await devices.async_setup()

@@ -16,6 +16,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import DraginoConfigEntry
 from ._vendor.dragino_lorawan import LT22222
+from .coordinator import DraginoCoordinator
 from .entity import DraginoEntity, async_setup_entities
 
 
@@ -69,8 +70,8 @@ async def async_setup_entry(
         hass,
         entry,
         async_add_entities,
-        lambda device: [
-            DraginoSensor(device, description, channel)
+        lambda coordinator: [
+            DraginoSensor(coordinator, description, channel)
             for description in SENSORS
             for channel in description.channels
         ],
@@ -83,10 +84,13 @@ class DraginoSensor(DraginoEntity, SensorEntity):
     entity_description: DraginoSensorDescription
 
     def __init__(
-        self, device: LT22222, description: DraginoSensorDescription, channel: int
+        self,
+        coordinator: DraginoCoordinator,
+        description: DraginoSensorDescription,
+        channel: int,
     ) -> None:
         """Bind a measurement description and channel."""
-        super().__init__(device, description.key, channel)
+        super().__init__(coordinator, description.key, channel)
         self.entity_description = description
 
     @property

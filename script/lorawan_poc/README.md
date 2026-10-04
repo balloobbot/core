@@ -1,8 +1,7 @@
 # LoRaWAN proof of concept
 
-The POC pins `lorawan-connection[chirpstack]` to commit `9fae0623663ded6a40d3b1f33be7e46811467b12`.
+The POC uses `lorawan-connection[chirpstack]==0.8.0` from PyPI.
 It includes collection-managed subscriptions and a restricted consumer connection.
-The manifest uses that commit until the next PyPI release.
 
 This worktree adds `lorawan`, `sensecap`, and `dragino` integrations. It connects to an
 existing ChirpStack 4.19 server and discovers provisioned devices. The first
@@ -24,7 +23,7 @@ are also available on the proposal website.
 
 1. Run `script/setup` in this worktree. For direct test runs, install the
    integration dependencies with
-   `uv pip install "lorawan-connection[chirpstack]@https://github.com/home-assistant-libs/lorawan-connection/archive/9fae0623663ded6a40d3b1f33be7e46811467b12.zip"`.
+   `uv pip install "lorawan-connection[chirpstack]==0.8.0"`.
    HA installs the package and its backend dependencies from the LoRaWAN manifest when setting up the integration.
 2. On ChirpStack, import the current device-profile catalog. Assign the **global
    SenseCAP S2101 catalog profile** for the device's radio region. A custom
@@ -57,8 +56,8 @@ integration/device/entity pages show the provider, collection, and sensors.
   model selection, partial state, and state observers.
 - `tests/components/lorawan` and `tests/components/sensecap`: isolated tests.
 
-The shared LoRaWAN library uses the commit pinned in the manifest. The SenseCAP and Dragino libraries remain
-vendored under its temporary Core namespace; it uses no HA APIs and imports
+The shared LoRaWAN library uses the PyPI version pinned in the manifest. The SenseCAP and Dragino libraries remain
+vendored under temporary Core namespaces; they use no HA APIs and import
 `lorawan_connection` directly. ChirpStack API helpers ship in the optional shared-library backend. Generated ChirpStack bindings,
 gRPC, and protobuf remain ordinary dependencies. No JavaScript decoder runs in
 HA. The native decoder follows Seeed's seven-byte record layout and the catalog
@@ -80,18 +79,20 @@ from homeassistant.components.sensecap._vendor.sensecap_lorawan import (
 )
 
 models = SenseCapDeviceCollection(connection)
-stop_added = models.subscribe_device_added(device_added)
-stop_removed = models.subscribe_device_removed(device_removed)
+unsubscribe_added = models.subscribe_device_added(device_added)
+unsubscribe_removed = models.subscribe_device_removed(device_removed)
 await models.async_setup()
 ```
 
 `subscribe_device_added` synchronously reports existing models as well as future
-ones. In `device_added`, create entities and subscribe to the model's state.
+ones. Each device has one `DataUpdateCoordinator`, shared across its entities and platforms.
+The coordinator listens to model updates. Entities inherit `lorawan.LoRaWANEntity`,
+which handles device removal and preserves registry records.
 Resolve the restricted connection with `lorawan.get_connection(hass, provider_entry_id)`.
 Attach a reload listener with `connection.on_disconnect(callback)`. The collection
 selects its vendors and owns its subscription; closing it leaves the connection open.
-Forward every event to the collection; decoding, FPorts, state merging, and
-unsupported data belong to the vendor library. Close subscriptions and models
+The collection receives events through its connection; decoding, FPorts, state merging,
+and unsupported data belong to the vendor library. Close subscriptions and models
 when unloading. `test_libraries.py` is a runnable fixture example.
 
 Events are borrowed, read-only Protocols. `DeviceEventData` is a small envelope;
@@ -121,7 +122,7 @@ The vendored SenseCAP library passes `SenseCapDeviceCollection.DEVICES` to the s
 
 ```sh
 uv run --no-sync python -m homeassistant.components.sensecap._vendor.sensecap_lorawan \
-  --server https://host:port --api-key-file /path/to/key --tenant TENANT_UUID --list
+  --server https://host:port --api-key-file /path/to/key --tenant TENANT_UUID
 ```
 
 Remove `--list` to watch decoded state. Add `--json` for newline-delimited JSON.

@@ -1,19 +1,30 @@
 """Dragino devices on a LoRaWAN provider."""
 
+from dataclasses import dataclass, field
+
 from homeassistant.components import lorawan
 from homeassistant.components.lorawan import ConnectionUnavailable
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 
-from ._vendor.dragino_lorawan import DraginoDevices
+from ._vendor.dragino_lorawan import LT22222, DraginoDevices
+from .coordinator import DraginoCoordinator
 
 DOMAIN = "dragino"
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
-type DraginoConfigEntry = ConfigEntry[DraginoDevices]
+type DraginoConfigEntry = ConfigEntry[DraginoData]
 PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR, Platform.SWITCH]
+
+
+@dataclass
+class DraginoData:
+    """Keep the collection and its shared device coordinators."""
+
+    collection: DraginoDevices
+    coordinators: dict[str, DraginoCoordinator] = field(default_factory=dict)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: DraginoConfigEntry) -> bool:
@@ -27,7 +38,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: DraginoConfigEntry) -> b
             lambda: hass.config_entries.async_schedule_reload(entry.entry_id)
         )
     )
-    devices = entry.runtime_data = DraginoDevices(connection)
+    devices = DraginoDevices(connection)
+    entry.runtime_data = DraginoData(devices)
+
+    @callback
+    def added(device: LT22222) -> None:
+        entry.runtime_data.coordinators[device.descriptor.dev_eui] = DraginoCoordinator(
+            hass, entry, device
+        )
+
+    @callback
+    def removed(device: LT22222) -> None:
+        entry.runtime_data.coordinators.pop(device.descriptor.dev_eui, None)
+
+    entry.async_on_unload(devices.subscribe_device_added(added))
+    entry.async_on_unload(devices.subscribe_device_removed(removed))
     entry.async_on_unload(devices.close)
     try:
         await devices.async_setup()

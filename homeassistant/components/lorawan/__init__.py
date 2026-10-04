@@ -32,6 +32,7 @@ from .const import (
     CONF_TENANT_ID,
     DOMAIN,
 )
+from .entity import LoRaWANEntity as LoRaWANEntity
 from .websocket_api import async_register
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)

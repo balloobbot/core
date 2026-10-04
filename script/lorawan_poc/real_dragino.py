@@ -252,7 +252,7 @@ async def test_real_dragino_stack(hass: HomeAssistant) -> None:
         )
         await provider.runtime_data.connection.refresh()
         await hass.async_block_till_done()
-        assert not vendor.runtime_data.devices
+        assert not vendor.runtime_data.collection.devices
         print("PASS: server device deletion removed the vendor model")
     finally:
         if simulator is not None and simulator.returncode is None:
