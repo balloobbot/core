@@ -2374,7 +2374,9 @@ async def test_resolve_invalid_manifest_metadata(
     )
 
 
-async def test_loader_uses_validated_optional_metadata(hass: HomeAssistant) -> None:
+async def test_loader_uses_validated_optional_metadata(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
     """Invalid display fields cannot change picker types or enable a config flow."""
     manifest = {
         "domain": "test",
@@ -2386,6 +2388,11 @@ async def test_loader_uses_validated_optional_metadata(hass: HomeAssistant) -> N
     assert metadata == loader.IntegrationMetadata(
         domain="test", name=None, config_flow=False, codeowners=()
     )
+    assert set(caplog.messages) == {
+        "Ignoring name in manifest.json, 42 is not valid",
+        "Ignoring config_flow in manifest.json, 'false' is not valid",
+        "Ignoring codeowners in manifest.json, [42] is not valid",
+    }
     integration = loader.Integration(
         hass,
         "custom_components.test",

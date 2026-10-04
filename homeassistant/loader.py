@@ -12,7 +12,6 @@ import importlib
 import logging
 import os
 import pathlib
-import re
 import sys
 import time
 from types import ModuleType
@@ -298,27 +297,35 @@ class Manifest(TypedDict, total=False):
     preview_features: dict[str, dict[str, str]]
 
 
-_INTEGRATION_DOMAIN = re.compile(r"[a-z0-9_-]+")
-_INTEGRATION_METADATA_VALUES = {
-    "name": probatio.Schema(str),
-    "codeowners": probatio.Schema([str]),
-    "config_flow": probatio.Schema(bool),
-}
+def _default_if_invalid(schema: Any, default: Any, *, key: str) -> Callable[[Any], Any]:
+    """Wrap a metadata validator with a warning and fallback for invalid values."""
+    validator = probatio.Schema(schema)
+
+    def validate(value: Any) -> Any:
+        try:
+            return validator(value)
+        except probatio.Invalid:
+            _LOGGER.warning("Ignoring %s in manifest.json, %r is not valid", key, value)
+            return default
+
+    return validate
 
 
-def _integration_metadata_value(
-    manifest: Mapping[str, Any], key: str, default: Any
-) -> Any:
-    """Read optional metadata, ignoring values with the wrong type."""
-    if key not in manifest:
-        return default
-    try:
-        return _INTEGRATION_METADATA_VALUES[key](manifest[key])
-    except probatio.Invalid:
-        _LOGGER.warning(
-            "Ignoring %s in manifest.json, %r is not valid", key, manifest[key]
-        )
-        return default
+_INTEGRATION_METADATA_SCHEMA = probatio.Schema(
+    {
+        probatio.Required("domain"): probatio.All(
+            str, probatio.Match(r"^[a-z0-9_-]+\Z")
+        ),
+        probatio.Optional("name"): _default_if_invalid(str, None, key="name"),
+        probatio.Optional("codeowners"): _default_if_invalid(
+            [str], (), key="codeowners"
+        ),
+        probatio.Optional("config_flow"): _default_if_invalid(
+            bool, False, key="config_flow"
+        ),
+    },
+    extra=probatio.ALLOW_EXTRA,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -334,13 +341,15 @@ class IntegrationMetadata:
     def from_manifest(cls, manifest: Mapping[str, Any]) -> IntegrationMetadata:
         """Read metadata from a local or downloaded manifest without importing code."""
         domain = manifest["domain"]
-        if not isinstance(domain, str) or not _INTEGRATION_DOMAIN.fullmatch(domain):
-            raise ValueError(f"Invalid integration domain: {domain!r}")
+        try:
+            validated = _INTEGRATION_METADATA_SCHEMA(dict(manifest))
+        except probatio.Invalid as err:
+            raise ValueError(f"Invalid integration domain: {domain!r}") from err
         return cls(
-            domain=domain,
-            name=_integration_metadata_value(manifest, "name", None),
-            codeowners=tuple(_integration_metadata_value(manifest, "codeowners", [])),
-            config_flow=_integration_metadata_value(manifest, "config_flow", False),
+            domain=validated["domain"],
+            name=validated.get("name"),
+            codeowners=tuple(validated.get("codeowners", ())),
+            config_flow=validated.get("config_flow", False),
         )
 
 
