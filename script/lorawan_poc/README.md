@@ -137,7 +137,8 @@ Sleeping sensors keep their last readings; a transport disconnect is different.
 Missed readings are acceptable; HA does not backfill historical state. ChirpStack’s
 current stream also sends retained events when opened. Timestamp filtering drops
 older events, assuming synchronized HA and ChirpStack clocks. Library main captures
-the cutoff when each device stream opens, including devices discovered later.
+the cutoff when each device stream opens, minus five seconds, including devices
+discovered later. Remove this workaround once retained delivery can be disabled.
 This branch keeps published 0.8.0, whose cutoff is connection creation time, until
 the next authorized release. A server-side live-only option would remove the clock
 assumption. There is no two-second startup filter.
