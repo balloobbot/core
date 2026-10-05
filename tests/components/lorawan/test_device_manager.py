@@ -176,7 +176,9 @@ async def test_partial_subscription_failure(
     manager.subscribe_coordinator_added(delivered.append)
 
     async def fail_after_device(
-        *, vendor_ids: frozenset[int], callback: Callable[[DeviceEvent], None]
+        *,
+        brands: frozenset[tuple[str, int | str]],
+        callback: Callable[[DeviceEvent], None],
     ) -> Unsubscribe:
         callback(inventory(DESCRIPTOR))
         raise error

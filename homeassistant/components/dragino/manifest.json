@@ -7,6 +7,9 @@
   "documentation": "https://www.home-assistant.io/integrations/dragino",
   "integration_type": "hub",
   "iot_class": "local_push",
-  "lorawan": [676],
+  "lorawan": [
+    ["chirpstack", 676],
+    ["tts", "dragino"]
+  ],
   "requirements": []
 }

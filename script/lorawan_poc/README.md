@@ -87,8 +87,8 @@ trailer: the reference decoder's CRC routine is a stub.
 
 ## Library author pattern
 
-Subclass `Device` for each model and declare its `vendor_id` and
-`catalog_model_id`. Declare supported classes in `DeviceCollection.DEVICES`; the
+Subclass `Device` for each model and declare `identifiers`, a mapping from stack
+to `(brand_id, model_id)`. Declare supported classes in `DeviceCollection.DEVICES`; the
 collection builds its lookup and creates or retires models automatically. Models
 update their own attributes and call `notify()`. Consumers use `add_update_listener()`
 with callbacks that read those attributes. Override `_create_device()` only for special
@@ -321,3 +321,19 @@ Compare vendored examples with the library checkout:
 ```sh
 uv run --no-sync python script/lorawan_poc/check_vendor_examples.py ../lorawan-connection
 ```
+
+
+## TTS identity spike
+
+The `lorawan-tts-spike` branch uses the `tts-spike` branch of `lorawan-connection`.
+Use the matching editable library in this development environment:
+
+```sh
+uv pip install --python .venv/bin/python --no-deps -e ../lorawan-connection
+```
+
+Discovery registrations are stack and brand pairs, for example
+`"lorawan": [["chirpstack", 744], ["tts", "sensecap"]]`. The HA provider still
+connects to ChirpStack. The separate TTS transport spike lives in the library's
+`script/tts_spike/` directory; this branch tests the shared identity and discovery
+contract, not a TTS config flow.

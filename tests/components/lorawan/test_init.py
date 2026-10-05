@@ -43,12 +43,12 @@ async def test_provider_subscription(
         consumer, disconnected = Mock(), Mock()
         unsubscribe_disconnect = connection.on_disconnect(disconnected)
         unsubscribe = await connection.async_subscribe(
-            vendor_ids=frozenset({744}),
+            brands=frozenset({("chirpstack", 744)}),
             callback=consumer,
         )
         consumer.assert_called_once()
         mock_connection._emit(
-            inventory(replace(DESCRIPTOR, vendor_id=1), EventType.UPDATED), DESCRIPTOR
+            inventory(replace(DESCRIPTOR, brand_id=1), EventType.UPDATED), DESCRIPTOR
         )
         assert consumer.call_args.args[0].type == EventType.REMOVED
         unsubscribe()
@@ -99,7 +99,9 @@ async def test_disconnect(
     )
     disconnected = Mock()
     connection.on_disconnect(disconnected)
-    await connection.async_subscribe(vendor_ids=frozenset({744}), callback=Mock())
+    await connection.async_subscribe(
+        brands=frozenset({("chirpstack", 744)}), callback=Mock()
+    )
     with patch.object(hass.config_entries, "async_schedule_reload") as reload:
         mock_connection._failed(ConnectionUnavailable())
         disconnected.assert_called_once_with()
@@ -107,7 +109,9 @@ async def test_disconnect(
     with pytest.raises(ConnectionUnavailable):
         _async_get_connection(hass, connection_entry_id=provider_entry.entry_id)
     with pytest.raises(ConnectionUnavailable):
-        await connection.async_subscribe(vendor_ids=frozenset({744}), callback=Mock())
+        await connection.async_subscribe(
+            brands=frozenset({("chirpstack", 744)}), callback=Mock()
+        )
     await hass.config_entries.async_unload(provider_entry.entry_id)
 
 
@@ -151,7 +155,11 @@ async def test_manifest_vendor_discovery(
     with (
         patch(
             "homeassistant.components.lorawan.async_get_lorawan",
-            return_value={"one": [744, 676], "two": [744], "other": [123]},
+            return_value={
+                "one": [("chirpstack", 744), ("chirpstack", 676)],
+                "two": [("chirpstack", 744)],
+                "other": [("chirpstack", 123)],
+            },
         ),
         patch.object(hass.config_entries.flow, "async_init", AsyncMock()) as discovery,
     ):

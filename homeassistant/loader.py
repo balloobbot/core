@@ -283,7 +283,7 @@ class Manifest(TypedDict, total=False):
     iot_class: str
     bluetooth: list[dict[str, int | str]]
     mqtt: list[str]
-    lorawan: list[int]
+    lorawan: list[tuple[str, int | str]]
     ssdp: list[dict[str, str]]
     zeroconf: list[str | dict[str, str]]
     dhcp: list[dict[str, bool | str]]
@@ -666,9 +666,11 @@ async def async_get_homekit(
     return homekit
 
 
-async def async_get_lorawan(hass: HomeAssistant) -> dict[str, list[int]]:
+async def async_get_lorawan(
+    hass: HomeAssistant,
+) -> dict[str, list[tuple[str, int | str]]]:
     """Return LoRaWAN vendor registrations, including custom integrations."""
-    registrations = LORAWAN.copy()
+    registrations = cast(dict[str, list[tuple[str, int | str]]], LORAWAN.copy())
     integrations = await async_get_custom_components(hass)
     for integration in integrations.values():
         registrations.pop(integration.domain, None)
@@ -679,10 +681,16 @@ async def async_get_lorawan(hass: HomeAssistant) -> dict[str, list[int]]:
             not isinstance(vendors, list)
             or not vendors
             or any(
-                type(vendor) is not int or not 0 <= vendor <= 65535
+                not isinstance(vendor, list | tuple)
+                or len(vendor) != 2
+                or not isinstance(vendor[0], str)
+                or not vendor[0]
+                or type(vendor[1]) not in (int, str)
+                or (isinstance(vendor[1], int) and vendor[1] < 0)
+                or vendor[1] == ""
                 for vendor in vendors
             )
-            or len(set(vendors)) != len(vendors)
+            or len({tuple(vendor) for vendor in vendors}) != len(vendors)
             or not integration.config_flow
             or "lorawan" not in integration.dependencies
         ):
@@ -691,7 +699,7 @@ async def async_get_lorawan(hass: HomeAssistant) -> dict[str, list[int]]:
                 integration.domain,
             )
             continue
-        registrations[integration.domain] = vendors
+        registrations[integration.domain] = [(stack, brand) for stack, brand in vendors]
     return registrations
 
 
@@ -991,8 +999,8 @@ class Integration:
         return self.manifest.get("mqtt")
 
     @property
-    def lorawan(self) -> list[int] | None:
-        """Return the LoRaWAN vendor IDs this integration supports."""
+    def lorawan(self) -> list[tuple[str, int | str]] | None:
+        """Return the stack and brand IDs this integration supports."""
         return self.manifest.get("lorawan")
 
     @property

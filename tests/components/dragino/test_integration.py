@@ -29,13 +29,14 @@ from homeassistant.util import dt as dt_util
 from tests.common import MockConfigEntry
 
 DESCRIPTOR = DeviceDescriptor(
+    stack="chirpstack",
     network_id="network",
     dev_eui="0201010101010102",
     name="Workshop",
     application_id="application",
     profile_id="profile",
-    vendor_id=676,
-    catalog_model_id="cb0a7bef-eaa0-4c61-a0b6-ce33e6ecbc4f",
+    brand_id=676,
+    model_id="cb0a7bef-eaa0-4c61-a0b6-ce33e6ecbc4f",
 )
 
 

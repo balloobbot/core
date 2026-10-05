@@ -5,9 +5,11 @@ To update, run python3 -m script.hassfest
 
 LORAWAN = {
     "dragino": [
-        676,
+        ("chirpstack", 676),
+        ("tts", "dragino"),
     ],
     "sensecap": [
-        744,
+        ("chirpstack", 744),
+        ("tts", "sensecap"),
     ],
 }

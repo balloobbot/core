@@ -35,8 +35,8 @@ async def test_registry_lifecycle(
         if domain == "sensecap"
         else replace(
             DESCRIPTOR,
-            vendor_id=LT22222.vendor_id,
-            catalog_model_id=LT22222.catalog_model_id,
+            brand_id=LT22222.identifiers["chirpstack"][0],
+            model_id=LT22222.identifiers["chirpstack"][1],
         )
     )
     entry = MockConfigEntry(
@@ -90,9 +90,7 @@ async def test_registry_lifecycle(
         assert device is not None
         # A profile change to an unsupported model removes all its entities too.
         connection.emit(
-            inventory(
-                replace(descriptor, catalog_model_id="unsupported"), EventType.UPDATED
-            )
+            inventory(replace(descriptor, model_id="unsupported"), EventType.UPDATED)
         )
         await hass.async_block_till_done()
         assert device_registry.async_get(device.id) is None

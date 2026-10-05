@@ -28,8 +28,8 @@ def generate_and_validate(integrations: dict[str, Integration]) -> str:
             integration.add_error(
                 "lorawan", "Declare DEVICE_MODELS in a lorawan.py platform"
             )
-        for vendor_id in lorawan:
-            data[domain].append(vendor_id)
+        for stack, brand_id in lorawan:
+            data[domain].append((stack, brand_id))
 
     return format_python_namespace({"LORAWAN": data})
 

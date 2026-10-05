@@ -32,7 +32,7 @@ async def test_inventory_during_unload(
     async def support(
         hass: HomeAssistant,
         device: DeviceDescriptor,
-        integrations: dict[str, list[int]],
+        integrations: dict[str, list[tuple[str, int | str]]],
     ) -> None:
         entered.set()
         await release.wait()
@@ -66,44 +66,64 @@ async def test_inventory_during_unload(
         pytest.param(
             replace(
                 DESCRIPTOR,
-                vendor_id=676,
-                catalog_model_id="cb0a7bef-eaa0-4c61-a0b6-ce33e6ecbc4f",
+                stack="tts",
+                brand_id="sensecap",
+                model_id="sensecaps2101-temp-humid",
+            ),
+            None,
+            id="supported-tts-sensecap",
+        ),
+        pytest.param(
+            replace(DESCRIPTOR, stack="tts", brand_id=744),
+            "no_vendor_integration",
+            id="stack-namespace-is-required",
+        ),
+        pytest.param(
+            replace(DESCRIPTOR, stack="tts", brand_id="sensecap"),
+            "model_not_supported",
+            id="chirpstack-model-id-does-not-match-tts",
+        ),
+        pytest.param(
+            replace(
+                DESCRIPTOR,
+                brand_id=676,
+                model_id="cb0a7bef-eaa0-4c61-a0b6-ce33e6ecbc4f",
             ),
             None,
             id="supported-dragino",
         ),
         pytest.param(
-            replace(DESCRIPTOR, vendor_id=None, catalog_model_id=""),
+            replace(DESCRIPTOR, brand_id=None, model_id=""),
             "no_catalog_identity",
             id="custom-profile",
         ),
         pytest.param(
-            replace(DESCRIPTOR, catalog_model_id=""),
+            replace(DESCRIPTOR, model_id=""),
             "no_catalog_identity",
             id="missing-model-identity",
         ),
         pytest.param(
-            replace(DESCRIPTOR, vendor_id=None),
+            replace(DESCRIPTOR, brand_id=None),
             "no_catalog_identity",
             id="missing-vendor-identity",
         ),
         pytest.param(
-            replace(DESCRIPTOR, vendor_id=999, catalog_model_id=""),
+            replace(DESCRIPTOR, brand_id=999, model_id=""),
             "no_catalog_identity",
             id="missing-identity-before-vendor-match",
         ),
         pytest.param(
-            replace(DESCRIPTOR, vendor_id=999),
+            replace(DESCRIPTOR, brand_id=999),
             "no_vendor_integration",
             id="unregistered-vendor",
         ),
         pytest.param(
-            replace(DESCRIPTOR, catalog_model_id="another-model"),
+            replace(DESCRIPTOR, model_id="another-model"),
             "model_not_supported",
             id="unsupported-sensecap-model",
         ),
         pytest.param(
-            replace(DESCRIPTOR, vendor_id=676, catalog_model_id="another-model"),
+            replace(DESCRIPTOR, brand_id=676, model_id="another-model"),
             "model_not_supported",
             id="unsupported-dragino-model",
         ),
@@ -126,7 +146,7 @@ async def test_inventory(
     )
     result = await client.receive_json()
     assert result["success"]
-    assert result["result"]["devices"][0]["vendor_id"] == descriptor.vendor_id
+    assert result["result"]["devices"][0]["brand_id"] == descriptor.brand_id
     assert result["result"]["devices"][0]["unsupported_reason"] == reason
     assert result["result"]["available"] is True
     assert "secret" not in str(result)
@@ -161,7 +181,7 @@ async def test_support_changes_with_profile(
     hass_ws_client: WebSocketGenerator,
 ) -> None:
     """Assigning a catalog profile clears the reason before vendor setup."""
-    descriptor = replace(DESCRIPTOR, catalog_model_id="", vendor_id=None)
+    descriptor = replace(DESCRIPTOR, model_id="", brand_id=None)
     mock_connection.devices = {descriptor.dev_eui: descriptor}
     assert await hass.config_entries.async_setup(provider_entry.entry_id)
     client = await hass_ws_client(hass)

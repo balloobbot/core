@@ -35,8 +35,9 @@ DESCRIPTOR = DeviceDescriptor(
     "Greenhouse",
     "application",
     "profile",
-    S2101.catalog_model_id,
+    S2101.identifiers["chirpstack"][1],
     744,
+    stack="chirpstack",
 )
 PAYLOAD = bytes.fromhex("01011098530000010210A87A0000AF51")
 
@@ -66,9 +67,7 @@ def test_collection_lifecycle() -> None:
     collection.handle_event(inventory(replace(DESCRIPTOR, dev_eui="0201010101010102")))
     assert added.call_count == 2
     collection.handle_event(
-        inventory(
-            replace(DESCRIPTOR, catalog_model_id="unsupported"), EventType.UPDATED
-        )
+        inventory(replace(DESCRIPTOR, model_id="unsupported"), EventType.UPDATED)
     )
     assert model.closed
     removed.assert_called_once_with(model)
@@ -162,7 +161,7 @@ def test_unknown_device_network_and_vendor() -> None:
         )
     )
     collection.handle_event(inventory(replace(DESCRIPTOR, network_id="other")))
-    collection.handle_event(inventory(replace(DESCRIPTOR, vendor_id=1)))
+    collection.handle_event(inventory(replace(DESCRIPTOR, brand_id=1)))
     assert not collection.devices
 
 
@@ -205,19 +204,19 @@ def test_same_millisecond_partial_updates() -> None:
 
 
 @pytest.mark.parametrize(
-    ("domain", "vendor_id", "models"),
+    ("domain", "brand_id", "models"),
     [
         ("sensecap", 744, SenseCapDeviceCollection.DEVICES),
         ("dragino", 676, DraginoDevices.DEVICES),
     ],
 )
 async def test_registered_models(
-    hass: HomeAssistant, domain: str, vendor_id: int, models: tuple[type[Device], ...]
+    hass: HomeAssistant, domain: str, brand_id: int, models: tuple[type[Device], ...]
 ) -> None:
     """Discovery metadata must match the models the vendor library can create."""
     registrations = await async_get_lorawan(hass)
-    assert vendor_id in registrations[domain]
+    assert ("chirpstack", brand_id) in registrations[domain]
     integration = await async_get_integration(hass, domain)
     platform = await integration.async_get_platform("lorawan")
     assert models == platform.DEVICE_MODELS
-    assert all(model.vendor_id == vendor_id for model in models)
+    assert all(model.identifiers["chirpstack"][0] == brand_id for model in models)

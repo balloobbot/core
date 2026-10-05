@@ -2295,11 +2295,13 @@ async def test_async_get_integrations_multiple_non_existent(
     assert integrations["does_not_exist"] is integration
 
 
-@pytest.mark.parametrize("vendors", [[123, 744], []])
-async def test_get_lorawan(hass: HomeAssistant, vendors: list[int]) -> None:
+@pytest.mark.parametrize("vendors", [[("chirpstack", 744), ("tts", "sensecap")], []])
+async def test_get_lorawan(
+    hass: HomeAssistant, vendors: list[tuple[str, int | str]]
+) -> None:
     """Custom registrations replace built-ins without changing generated data."""
     integration = _get_test_integration(hass, "sensecap", True)
-    integration.manifest["lorawan"] = vendors
+    integration.manifest["lorawan"] = [list(vendor) for vendor in vendors]
     integration.manifest["config_flow"] = True
     integration.dependencies.append("lorawan")
     with patch(
@@ -2308,12 +2310,27 @@ async def test_get_lorawan(hass: HomeAssistant, vendors: list[int]) -> None:
     ):
         registrations = await loader.async_get_lorawan(hass)
     assert registrations.get("sensecap", []) == vendors
-    assert registrations["dragino"] == [676]
-    assert loader.LORAWAN["sensecap"] == [744]
+    assert registrations["dragino"] == [("chirpstack", 676), ("tts", "dragino")]
+    assert loader.LORAWAN["sensecap"] == [("chirpstack", 744), ("tts", "sensecap")]
 
 
 @pytest.mark.parametrize(
-    "value", [744, "744", {"vendor": 744}, [True], [-1], [65536], [744, 744]]
+    "value",
+    [
+        744,
+        "744",
+        {"vendor": 744},
+        [True],
+        [-1],
+        [65536],
+        [744, 744],
+        [["chirpstack", True]],
+        [["chirpstack", -1]],
+        [["tts", ""]],
+        [["", "sensecap"]],
+        [["tts", "sensecap", "extra"]],
+        [["tts", "sensecap"], ["tts", "sensecap"]],
+    ],
 )
 async def test_invalid_lorawan_registration(hass: HomeAssistant, value: object) -> None:
     """An invalid custom matcher cannot break other vendors' discovery."""
@@ -2326,4 +2343,4 @@ async def test_invalid_lorawan_registration(hass: HomeAssistant, value: object) 
     ):
         registrations = await loader.async_get_lorawan(hass)
     assert "sensecap" not in registrations
-    assert registrations["dragino"] == [676]
+    assert registrations["dragino"] == [("chirpstack", 676), ("tts", "dragino")]

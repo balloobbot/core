@@ -50,13 +50,11 @@ class _ConsumerConnection:
     async def async_subscribe(
         self,
         *,
-        vendor_ids: frozenset[int],
+        brands: frozenset[tuple[str, int | str]],
         callback: Callable[[DeviceEvent], None],
     ) -> Unsubscribe:
         """Deliver existing devices and live events for the selected vendors."""
-        return await self._backend.async_subscribe(
-            vendor_ids=vendor_ids, callback=callback
-        )
+        return await self._backend.async_subscribe(brands=brands, callback=callback)
 
     def on_disconnect(self, callback: Callable[[], None]) -> Unsubscribe:
         """Listen for connection loss without controlling the connection."""
@@ -72,7 +70,7 @@ class LoRaWANData:
     """Own provider inventory and vendor subscriptions."""
 
     connection: ChirpStackConnection
-    integrations: dict[str, list[int]]
+    integrations: dict[str, list[tuple[str, int | str]]]
     consumer: Connection = field(init=False)
     unsubscribe_disconnect: Unsubscribe | None = None
 
@@ -111,7 +109,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: LoRaWANConfigEntry) -> b
         if descriptor is None:
             return
         for domain, vendors in runtime.integrations.items():
-            if descriptor.vendor_id not in vendors:
+            if (descriptor.stack, descriptor.brand_id) not in vendors:
                 continue
             discovery_flow.async_create_flow(
                 hass,
@@ -137,7 +135,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: LoRaWANConfigEntry) -> b
             )
         )
         entry.async_on_unload(
-            await connection.async_subscribe(vendor_ids=None, callback=handle_event)
+            await connection.async_subscribe(brands=None, callback=handle_event)
         )
     except AuthenticationError as error:
         raise ConfigEntryAuthFailed from error
