@@ -12,7 +12,7 @@ from lorawan_connection.mock import MockConnection
 import pytest
 
 from homeassistant.components.dragino._vendor.dragino_lorawan import LT22222
-from homeassistant.components.lorawan import LoRaWANEntity
+from homeassistant.components.lorawan import ConnectionNotFound, LoRaWANEntity
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
@@ -198,3 +198,28 @@ async def test_connection_entry_migration(
     assert (entry.version, entry.minor_version) == (1, 2)
     assert entry.unique_id == "network"
     assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+@pytest.mark.parametrize("domain", ["sensecap", "dragino"])
+@pytest.mark.parametrize(
+    ("error", "state"),
+    [
+        (ConnectionUnavailable(), ConfigEntryState.SETUP_RETRY),
+        (ConnectionNotFound(), ConfigEntryState.SETUP_ERROR),
+    ],
+)
+async def test_connection_setup_errors(
+    hass: HomeAssistant, domain: str, error: Exception, state: ConfigEntryState
+) -> None:
+    """Consumer integrations distinguish temporary failure from a removed connection."""
+    entry = MockConfigEntry(
+        domain=domain,
+        data={"connection_entry_id": "connection", "network_id": "network"},
+    )
+    entry.add_to_hass(hass)
+    with patch(
+        "homeassistant.components.lorawan.device_manager._async_get_connection",
+        side_effect=error,
+    ):
+        assert not await hass.config_entries.async_setup(entry.entry_id)
+    assert entry.state is state

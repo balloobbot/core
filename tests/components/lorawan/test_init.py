@@ -7,11 +7,11 @@ from lorawan_connection import Downlink, EventType
 from lorawan_connection.chirpstack import AuthenticationError, ConnectionUnavailable
 import pytest
 
+from homeassistant.components.lorawan import ConnectionNotFound
 from homeassistant.components.lorawan.device_manager import _async_get_connection
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import CoreState, HomeAssistant
-from homeassistant.exceptions import ConfigEntryError, ConfigEntryNotReady
 
 from .test_libraries import DESCRIPTOR, inventory
 
@@ -83,9 +83,9 @@ async def test_unavailable_subscription(
     hass: HomeAssistant, provider_entry: MockConfigEntry
 ) -> None:
     """Unloaded and missing providers cannot accept subscriptions."""
-    with pytest.raises(ConfigEntryNotReady):
+    with pytest.raises(ConnectionUnavailable):
         _async_get_connection(hass, connection_entry_id=provider_entry.entry_id)
-    with pytest.raises(ConfigEntryError):
+    with pytest.raises(ConnectionNotFound):
         _async_get_connection(hass, "missing")
 
 
@@ -104,7 +104,7 @@ async def test_disconnect(
         mock_connection._failed(ConnectionUnavailable())
         disconnected.assert_called_once_with()
         reload.assert_called_once_with(provider_entry.entry_id)
-    with pytest.raises(ConfigEntryNotReady):
+    with pytest.raises(ConnectionUnavailable):
         _async_get_connection(hass, connection_entry_id=provider_entry.entry_id)
     with pytest.raises(ConnectionUnavailable):
         await connection.async_subscribe(vendor_ids=frozenset({744}), callback=Mock())

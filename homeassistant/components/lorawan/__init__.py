@@ -29,6 +29,7 @@ from .const import (
     DOMAIN,
 )
 from .device_manager import (
+    ConnectionNotFound as ConnectionNotFound,
     DeviceManager as DeviceManager,
     device_identifier as device_identifier,
 )

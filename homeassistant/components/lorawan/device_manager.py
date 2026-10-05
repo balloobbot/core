@@ -14,11 +14,7 @@ from lorawan_connection import (
 
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import (
-    ConfigEntryError,
-    ConfigEntryNotReady,
-    HomeAssistantError,
-)
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
@@ -30,6 +26,10 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
+class ConnectionNotFound(Exception):
+    """The selected LoRaWAN connection entry does not exist."""
+
+
 @callback
 def _async_get_connection(hass: HomeAssistant, connection_entry_id: str) -> Connection:
     """Resolve the connection selected for this device manager."""
@@ -37,12 +37,12 @@ def _async_get_connection(hass: HomeAssistant, connection_entry_id: str) -> Conn
         connection_entry_id
     )
     if entry is None or entry.domain != DOMAIN:
-        raise ConfigEntryError("The selected LoRaWAN connection entry was removed")
+        raise ConnectionNotFound("The selected LoRaWAN connection entry was removed")
     if (
         entry.state is not ConfigEntryState.LOADED
         or not entry.runtime_data.connection.available
     ):
-        raise ConfigEntryNotReady("LoRaWAN connection is not available")
+        raise ConnectionUnavailable("LoRaWAN connection is not available")
     return entry.runtime_data.consumer
 
 
@@ -97,9 +97,6 @@ class DeviceManager[DeviceT: Device, CoordinatorT: DataUpdateCoordinator[Any]]:
                 self.collection.subscribe_device_added(self._device_added)
             )
             await self.collection.async_setup()
-        except ConnectionUnavailable as error:
-            self.close()
-            raise ConfigEntryNotReady("LoRaWAN connection is not available") from error
         except BaseException:
             self.close()
             raise

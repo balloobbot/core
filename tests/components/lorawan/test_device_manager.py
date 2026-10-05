@@ -25,7 +25,7 @@ from homeassistant.components.sensecap._vendor.sensecap_lorawan import (
     SenseCapDeviceCollection,
 )
 from homeassistant.core import CoreState, HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
@@ -152,13 +152,7 @@ async def test_registry_scope_without_device_info(
     assert manager.coordinators == {}
 
 
-@pytest.mark.parametrize(
-    ("error", "expected_error"),
-    [
-        (ConnectionUnavailable, ConfigEntryNotReady),
-        (asyncio.CancelledError, asyncio.CancelledError),
-    ],
-)
+@pytest.mark.parametrize("error", [ConnectionUnavailable, asyncio.CancelledError])
 async def test_partial_subscription_failure(
     hass: HomeAssistant,
     manager: Manager,
@@ -166,7 +160,6 @@ async def test_partial_subscription_failure(
     entry: MockConfigEntry,
     device_registry: dr.DeviceRegistry,
     error: type[BaseException],
-    expected_error: type[BaseException],
 ) -> None:
     """Retire partial setup without treating missing devices as remote deletions."""
     registered = device_registry.async_get_or_create(
@@ -183,7 +176,7 @@ async def test_partial_subscription_failure(
 
     with (
         patch.object(connection, "async_subscribe", new=fail_after_device),
-        pytest.raises(expected_error),
+        pytest.raises(error),
     ):
         await manager.async_setup(connection_entry_id="selected-connection")
     await hass.async_block_till_done()
