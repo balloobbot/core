@@ -7,5 +7,5 @@
   "documentation": "https://www.home-assistant.io/integrations/chirpstack",
   "integration_type": "hub",
   "iot_class": "local_push",
-  "requirements": ["lorawan-connection[chirpstack]==0.9.0"]
+  "requirements": ["lorawan-connection[chirpstack]==0.10.0"]
 }

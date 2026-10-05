@@ -1,15 +1,15 @@
 # LoRaWAN proof of concept
 
-This architecture branch uses the matching `provider-architecture` branch of
-`lorawan-connection`. Install it into the Core environment before running the POC.
-The manifests retain the last released version until this work is reviewed.
+This POC uses published `lorawan-connection==0.10.0`, including the optional
+ChirpStack and The Things Stack backends. The integration manifests pin the
+released package; no editable library checkout is required.
 
 Use a fresh HA test configuration for this branch. It replaces the old LoRaWAN
 server entry with ChirpStack entries and uses each server entry ID as the device
 identity namespace. Migration from the earlier experimental branch is not included.
 
 This worktree adds `chirpstack`, `the_things_stack`, `lorawan`, `sensecap`, and `dragino` integrations. It connects to an
-existing ChirpStack 4.19 server and discovers provisioned devices. The first
+existing ChirpStack 4.19 or TTS 3.36 server and discovers provisioned devices. The first
 SenseCAP model is S2101, with temperature and humidity sensors. Provisioning,
 BLE, gateway setup, a managed HA app, and a custom frontend are later phases.
 
@@ -26,20 +26,18 @@ are also available on the proposal website.
 
 ## Try it in Home Assistant
 
-1. Run `script/setup` in this worktree. Then clone the matching library branch
-   next to Core and install it:
+1. Run `script/setup` in this worktree. For the tests and CLI examples, install
+   the published library with both backend extras:
 
    ```sh
-   git clone --branch provider-architecture https://github.com/home-assistant-libs/lorawan-connection.git ../lorawan-connection
-   uv pip install --python .venv/bin/python -e '../lorawan-connection[chirpstack,tts]'
+   uv pip install --python .venv/bin/python 'lorawan-connection[chirpstack,tts]==0.10.0'
    ```
 
-   The ChirpStack integration requests the backend extra; LoRaWAN owns the base requirement.
-   When starting HA, prevent it from replacing the editable library with the last
-   published version:
+   During normal setup, each server integration installs its required extra.
+   Start HA with a fresh configuration:
 
    ```sh
-   uv run --no-sync python -m homeassistant --config ../lorawan-test-config --skip-pip-packages lorawan-connection
+   uv run --no-sync python -m homeassistant --config ../lorawan-test-config
    ```
 2. On ChirpStack, import the current device-profile catalog. Assign the **global
    SenseCAP S2101 catalog profile** for the device's radio region. A custom
@@ -96,7 +94,7 @@ retains the device identity without a codec.
   `tests/components/lorawan`, `tests/components/sensecap`, and
   `tests/components/dragino`: isolated tests.
 
-The shared LoRaWAN library uses the editable branch for this experiment. The SenseCAP and Dragino libraries remain
+The shared LoRaWAN library is published as version 0.10.0. The SenseCAP and Dragino libraries remain
 vendored under temporary Core namespaces; they use no HA APIs and import
 `lorawan_connection` directly. ChirpStack API helpers ship in the optional shared-library backend. Generated ChirpStack bindings,
 gRPC, and protobuf remain ordinary dependencies. No JavaScript decoder runs in
@@ -266,7 +264,7 @@ Never commit API keys, database files, or runtime logs.
 This is a POC, not a claimed Bronze-quality contribution. `quality_scale.yaml`
 records remaining distribution/documentation work as `todo`. Full Hassfest
 currently rejects that incomplete quality tier. The manifests pin the published
-library, but this architecture branch requires the editable checkout described above.
+library, including both optional backends.
 Publish the SenseCAP and Dragino libraries, add official integration documentation and brands, review
 the vendor-discovery registration mechanism, and test actual SenseCAP hardware
 before an upstream contribution.
