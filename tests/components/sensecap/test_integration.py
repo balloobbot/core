@@ -31,7 +31,7 @@ async def test_sensor_lifecycle(hass: HomeAssistant) -> None:
     entry.add_to_hass(hass)
     connection = MockConnection([DESCRIPTOR])
     with patch(
-        "homeassistant.components.sensecap.get_connection",
+        "homeassistant.components.sensecap.async_get_connection",
         return_value=connection,
     ):
         assert await hass.config_entries.async_setup(entry.entry_id)
@@ -77,7 +77,7 @@ async def test_provider_unavailable(hass: HomeAssistant) -> None:
     )
     entry.add_to_hass(hass)
     with patch(
-        "homeassistant.components.sensecap.get_connection",
+        "homeassistant.components.sensecap.async_get_connection",
         side_effect=ConnectionUnavailable,
     ):
         assert not await hass.config_entries.async_setup(entry.entry_id)

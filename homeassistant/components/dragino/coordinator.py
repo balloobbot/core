@@ -3,10 +3,13 @@
 import logging
 from typing import override
 
+from homeassistant.components.lorawan import device_identifiers
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from ._vendor.dragino_lorawan import LT22222
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -16,10 +19,20 @@ class DraginoCoordinator(DataUpdateCoordinator[LT22222]):
 
     def __init__(self, hass: HomeAssistant, device: LT22222) -> None:
         """Subscribe once to the library model."""
-        # The collection retires coordinators before config-entry unload.
+        # The device manager shuts down coordinators when their models retire.
         super().__init__(hass, _LOGGER, config_entry=None, name=device.descriptor.name)
         self.async_set_updated_data(device)
         self._unsubscribe = device.add_update_listener(self._async_device_updated)
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Describe this device for its entities."""
+        return DeviceInfo(
+            identifiers=device_identifiers(DOMAIN, self.data),
+            name=self.data.descriptor.name,
+            manufacturer="Dragino",
+            model="LT-22222-L",
+        )
 
     @callback
     def _async_device_updated(self) -> None:

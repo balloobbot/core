@@ -95,28 +95,35 @@ with callbacks that read those attributes. Override `_create_device()` only for 
 matching rules.
 
 ```python
-from homeassistant.components.sensecap._vendor.sensecap_lorawan import (
-    SenseCapDeviceCollection,
+manager = entry.runtime_data = lorawan.DeviceManager(
+    hass,
+    entry,
+    collection=SenseCapDeviceCollection(connection),
+    create_coordinator=SenseCapCoordinator,
 )
-
-models = SenseCapDeviceCollection(connection)
-unsubscribe_added = models.subscribe_device_added(device_added)
-unsubscribe_removed = models.subscribe_device_removed(device_removed)
-await models.async_setup()
+entry.async_on_unload(manager.close)
+await manager.async_setup()
 ```
 
-`subscribe_device_added` synchronously reports existing models as well as future
-ones. Each device has one `DataUpdateCoordinator`, shared across its entities and platforms.
-The coordinator listens to model updates and shuts down when its model leaves the
-collection, including during unload. Entities inherit `lorawan.LoRaWANEntity`,
-which handles model updates and late entity additions. Collection callbacks remove
-devices through the device registry, including startup reconciliation for offline removals.
-Resolve the restricted connection with `lorawan.get_connection(hass, connection_entry_id)`.
+The HA device manager creates one ordinary `DataUpdateCoordinator` per device and
+owns its lifetime. Platforms use `manager.subscribe_coordinator_added(callback)`
+to receive ready coordinators for existing and new devices. All platforms share
+the same coordinator for a device. Its `device_info` uses
+`lorawan.device_identifiers(DOMAIN, device)`; entities return that information.
+The manager uses the same identity for registry cleanup without inspecting metadata.
+
+The manager removes registry records on live device removal and reconciles removals
+that happened while HA was offline after successful setup. It updates registered
+device names when descriptors change. Ordinary unload and failed setup preserve
+registry records. Entities inherit `lorawan.LoRaWANEntity`, which handles model
+updates and late entity additions. Closing the manager closes the collection and
+retires coordinators, leaving the shared connection open.
+
+Resolve the restricted connection with `lorawan.async_get_connection(hass, connection_entry_id)`.
 Attach a reload listener with `connection.on_disconnect(callback)`. The collection
-selects its vendors and owns its subscription; closing it leaves the connection open.
-The collection receives events through its connection; decoding, FPorts, state merging,
-and unsupported data belong to the vendor library. Close subscriptions and models
-when unloading. `test_libraries.py` is a runnable fixture example.
+selects its vendors and owns its subscription. Decoding, FPorts, state merging,
+and unsupported data stay in the vendor library. `test_libraries.py` is a runnable
+fixture example; `test_device_manager.py` exercises the shared HA lifecycle.
 
 Events are borrowed, read-only Protocols. `DeviceEventData` is a small envelope;
 its payload is the original generated protobuf object, not a reconstructed

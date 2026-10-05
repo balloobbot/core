@@ -1,13 +1,14 @@
 """Shared Dragino entity identity and collection subscriptions."""
 
 from collections.abc import Callable
+from typing import override
 
 from homeassistant.components.lorawan import LoRaWANEntity
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from . import DOMAIN, DraginoConfigEntry
+from . import DraginoConfigEntry
 from ._vendor.dragino_lorawan import LT22222
 from .coordinator import DraginoCoordinator
 
@@ -22,16 +23,16 @@ def async_setup_entities(
     """Add entities for existing and future models."""
 
     @callback
-    def added(device: LT22222) -> None:
-        async_add_entities(
-            factory(entry.runtime_data.coordinators[device.descriptor.dev_eui])
-        )
+    def added(coordinator: DraginoCoordinator) -> None:
+        async_add_entities(factory(coordinator))
 
-    entry.async_on_unload(entry.runtime_data.collection.subscribe_device_added(added))
+    entry.async_on_unload(entry.runtime_data.subscribe_coordinator_added(added))
 
 
 class DraginoEntity(LoRaWANEntity[LT22222]):
     """Observe a library model without interpreting LoRaWAN messages."""
+
+    coordinator: DraginoCoordinator
 
     def __init__(self, coordinator: DraginoCoordinator, key: str, channel: int) -> None:
         """Bind a channel to a model and its registry identity."""
@@ -42,9 +43,8 @@ class DraginoEntity(LoRaWANEntity[LT22222]):
         descriptor = self.device.descriptor
         identity = f"{descriptor.network_id}:{descriptor.dev_eui}"
         self._attr_unique_id = f"{identity}:{key}_{channel}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, identity)},
-            name=descriptor.name,
-            manufacturer="Dragino",
-            model="LT-22222-L",
-        )
+
+    @property
+    @override
+    def device_info(self) -> DeviceInfo:
+        return self.coordinator.device_info

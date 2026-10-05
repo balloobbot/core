@@ -13,7 +13,7 @@ from homeassistant.helpers.update_coordinator import (
 
 
 class LoRaWANEntity[DeviceT: Device](CoordinatorEntity[DataUpdateCoordinator[DeviceT]]):
-    """Share model updates; the collection owns device registry cleanup."""
+    """Share model updates; the device manager owns registry cleanup."""
 
     _attr_has_entity_name = True
 

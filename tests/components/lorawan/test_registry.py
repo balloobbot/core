@@ -57,7 +57,8 @@ async def test_registry_lifecycle(
         disabled_by=er.RegistryEntryDisabler.USER,
     )
     with patch(
-        f"homeassistant.components.{domain}.get_connection", return_value=connection
+        f"homeassistant.components.{domain}.async_get_connection",
+        return_value=connection,
     ):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
@@ -115,7 +116,8 @@ async def test_subscription_failure_preserves_registry(
     connection = MockConnection()
     with (
         patch(
-            f"homeassistant.components.{domain}.get_connection", return_value=connection
+            f"homeassistant.components.{domain}.async_get_connection",
+            return_value=connection,
         ),
         patch.object(
             connection,
@@ -150,7 +152,8 @@ async def test_removal_during_entity_add(
 
     with (
         patch(
-            "homeassistant.components.sensecap.get_connection", return_value=connection
+            "homeassistant.components.sensecap.async_get_connection",
+            return_value=connection,
         ),
         patch.object(LoRaWANEntity, "async_added_to_hass", delayed),
     ):
@@ -182,12 +185,12 @@ async def test_connection_entry_migration(
     )
     entry.add_to_hass(hass)
     with patch(
-        f"homeassistant.components.{domain}.get_connection",
+        f"homeassistant.components.{domain}.async_get_connection",
         return_value=MockConnection(),
-    ) as get_connection:
+    ) as async_get_connection:
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
-    get_connection.assert_called_once_with(hass, "connection")
+    async_get_connection.assert_called_once_with(hass, "connection")
     assert entry.data == {
         "connection_entry_id": "connection",
         "network_id": "network",

@@ -32,6 +32,10 @@ from .const import (
     CONF_TENANT_ID,
     DOMAIN,
 )
+from .device_manager import (
+    DeviceManager as DeviceManager,
+    device_identifiers as device_identifiers,
+)
 from .entity import LoRaWANEntity as LoRaWANEntity
 from .websocket_api import async_register
 
@@ -88,7 +92,7 @@ type LoRaWANConfigEntry = ConfigEntry[LoRaWANData]
 
 
 @hass_callback
-def get_connection(hass: HomeAssistant, connection_entry_id: str) -> Connection:
+def async_get_connection(hass: HomeAssistant, connection_entry_id: str) -> Connection:
     """Return the provider's connected network for a device collection."""
     entry: LoRaWANConfigEntry | None = hass.config_entries.async_get_entry(
         connection_entry_id

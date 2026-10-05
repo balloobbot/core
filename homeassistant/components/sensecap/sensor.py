@@ -16,7 +16,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from . import DOMAIN, SenseCapConfigEntry
+from . import SenseCapConfigEntry
 from ._vendor.sensecap_lorawan import S2101
 from .coordinator import SenseCapCoordinator
 
@@ -58,20 +58,18 @@ async def async_setup_entry(
     """Listen for models, including those created during initial inventory."""
 
     @callback
-    def added(device: S2101) -> None:
+    def added(coordinator: SenseCapCoordinator) -> None:
         async_add_entities(
-            SenseCapSensor(
-                entry.runtime_data.coordinators[device.descriptor.dev_eui], description
-            )
-            for description in DESCRIPTIONS
+            SenseCapSensor(coordinator, description) for description in DESCRIPTIONS
         )
 
-    entry.async_on_unload(entry.runtime_data.collection.subscribe_device_added(added))
+    entry.async_on_unload(entry.runtime_data.subscribe_coordinator_added(added))
 
 
 class SenseCapSensor(LoRaWANEntity[S2101], SensorEntity):
     """Read typed state; decoding and event interpretation belong to the library."""
 
+    coordinator: SenseCapCoordinator
     entity_description: SenseCapSensorDescription
 
     def __init__(
@@ -83,12 +81,11 @@ class SenseCapSensor(LoRaWANEntity[S2101], SensorEntity):
         descriptor = self.device.descriptor
         identity = f"{descriptor.network_id}:{descriptor.dev_eui}"
         self._attr_unique_id = f"{identity}:channel_1:{description.key}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, identity)},
-            name=descriptor.name,
-            manufacturer="Seeed Studio",
-            model="SenseCAP S2101",
-        )
+
+    @property
+    @override
+    def device_info(self) -> DeviceInfo:
+        return self.coordinator.device_info
 
     @property
     @override
