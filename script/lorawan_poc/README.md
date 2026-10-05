@@ -3,6 +3,8 @@
 This POC uses published `lorawan-connection==0.10.0`, including the optional
 ChirpStack and The Things Stack backends. The integration manifests pin the
 released package; no editable library checkout is required.
+Check the [PyPI publication workflow](https://github.com/home-assistant-libs/lorawan-connection/actions/runs/37364679650)
+has completed before installing version 0.10.0.
 
 Use a fresh HA test configuration for this branch. It replaces the old LoRaWAN
 server entry with ChirpStack entries and uses each server entry ID as the device
