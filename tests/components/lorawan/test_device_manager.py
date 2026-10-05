@@ -19,7 +19,7 @@ from lorawan_connection import (
 from lorawan_connection.mock import MockConnection
 import pytest
 
-from homeassistant.components.lorawan import DeviceManager, device_identifiers
+from homeassistant.components.lorawan import DeviceManager, device_identifier
 from homeassistant.components.sensecap._vendor.sensecap_lorawan import (
     S2101,
     SenseCapDeviceCollection,
@@ -130,7 +130,7 @@ async def test_registry_scope_without_device_info(
     other = MockConfigEntry(domain="sensecap")
     other.add_to_hass(hass)
     device = S2101(DESCRIPTOR)
-    identifiers = device_identifiers("sensecap", device)
+    identifiers = {device_identifier("sensecap", device)}
     owned = device_registry.async_get_or_create(
         config_entry_id=entry.entry_id, identifiers=identifiers
     )

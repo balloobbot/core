@@ -3,7 +3,7 @@
 import logging
 from typing import override
 
-from homeassistant.components.lorawan import device_identifiers
+from homeassistant.components.lorawan import device_identifier
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -28,7 +28,7 @@ class DraginoCoordinator(DataUpdateCoordinator[LT22222]):
     def device_info(self) -> DeviceInfo:
         """Describe this device for its entities."""
         return DeviceInfo(
-            identifiers=device_identifiers(DOMAIN, self.data),
+            identifiers={device_identifier(DOMAIN, self.data)},
             name=self.data.descriptor.name,
             manufacturer="Dragino",
             model="LT-22222-L",

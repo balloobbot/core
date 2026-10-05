@@ -30,7 +30,7 @@ from .const import (
 )
 from .device_manager import (
     DeviceManager as DeviceManager,
-    device_identifiers as device_identifiers,
+    device_identifier as device_identifier,
 )
 from .entity import LoRaWANEntity as LoRaWANEntity
 from .websocket_api import async_register

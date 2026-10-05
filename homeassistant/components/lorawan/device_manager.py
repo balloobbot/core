@@ -46,10 +46,10 @@ def _async_get_connection(hass: HomeAssistant, connection_entry_id: str) -> Conn
     return entry.runtime_data.consumer
 
 
-def device_identifiers(domain: str, device: Device) -> set[tuple[str, str]]:
+def device_identifier(domain: str, device: Device) -> tuple[str, str]:
     """Identify a physical device within its vendor integration and network."""
     descriptor = device.descriptor
-    return {(domain, f"{descriptor.network_id}:{descriptor.dev_eui}")}
+    return (domain, f"{descriptor.network_id}:{descriptor.dev_eui}")
 
 
 class DeviceManager[DeviceT: Device, CoordinatorT: DataUpdateCoordinator[Any]]:
@@ -108,9 +108,8 @@ class DeviceManager[DeviceT: Device, CoordinatorT: DataUpdateCoordinator[Any]]:
             self.close()
             raise HomeAssistantError("Failed to create a LoRaWAN device coordinator")
         current = {
-            identifier
+            device_identifier(self._entry.domain, device)
             for device in self.collection.devices.values()
-            for identifier in device_identifiers(self._entry.domain, device)
         }
         for registered in dr.async_entries_for_config_entry(
             self._registry, self._entry.entry_id
@@ -165,9 +164,8 @@ class DeviceManager[DeviceT: Device, CoordinatorT: DataUpdateCoordinator[Any]]:
                     )
 
     def _registry_device(self, device: DeviceT) -> dr.DeviceEntry | None:
-        identifier = next(iter(device_identifiers(self._entry.domain, device)))
         return self._registry.async_get_device_by_identifier(
-            identifier, self._entry.entry_id
+            device_identifier(self._entry.domain, device), self._entry.entry_id
         )
 
     @callback

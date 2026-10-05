@@ -109,7 +109,7 @@ The HA device manager creates one ordinary `DataUpdateCoordinator` per device an
 owns its lifetime. Platforms use `manager.subscribe_coordinator_added(callback)`
 to receive ready coordinators for existing and new devices. All platforms share
 the same coordinator for a device. Its `device_info` uses
-`lorawan.device_identifiers(DOMAIN, device)`; entities return that information.
+`lorawan.device_identifier(DOMAIN, device)`; entities return that information.
 The manager uses the same identity for registry cleanup without inspecting metadata.
 
 The manager removes registry records on live device removal and reconciles removals
