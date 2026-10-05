@@ -291,8 +291,9 @@ upstream ChirpStack catalog; no local catalog entry is needed.
 
 Read-only keys can discover and monitor relays. An attempted write reports a clear
 error; replace the provider key with one that has tenant write access to enable control.
-Commands expire after 30 seconds in the server queue. There are no automatic command
-retries or queue flushes.
+Commands have no queue expiry by default. Library callers can pass `expires_at`
+on backends that support it. HA stops waiting after 30 seconds, but the command
+can still be delivered later. There are no automatic command retries or queue flushes.
 
 Voltage readings use volts and current readings use milliamperes. Digital inputs
 report high/low in mode 1; counting modes expose the corresponding counters.
@@ -378,8 +379,9 @@ uses `sensecap` / `sensecaps2101-temp-humid`. Devices need a DevEUI. The backend
 uses gRPC application and lifecycle streams plus a 30-second inventory refresh.
 
 TTS has no downlink queue expiry. Commands with `expires_at` fail before enqueueing.
-The current Dragino relay methods require expiry and therefore do not control
-relays through TTS. Raw commands without expiry can queue and await acknowledgements.
+The Dragino relay and digital-output methods default to no expiry, so they can
+queue commands and await acknowledgements through TTS. Queue clearing is a
+separate server operation; the integration does not clear queues on timeout.
 No physical TTS radio hardware or hosted Community Edition deployment was tested.
 
 To run the real TTS setup, CLI, uplink, TCP outage/recovery, and removal test,

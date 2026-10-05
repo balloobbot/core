@@ -1,9 +1,8 @@
 """Dragino device models consuming shared LoRaWAN events."""
 
 # This vendored library is framework-neutral.
-# pylint: disable=home-assistant-enforce-utcnow
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 import logging
 from typing import cast, override
 
@@ -98,7 +97,9 @@ class LT22222(Device):
         self.voltage_count = voltage_count
         self.notify()
 
-    async def async_set_relay(self, channel: int, on: bool) -> None:
+    async def async_set_relay(
+        self, channel: int, on: bool, *, expires_at: datetime | None = None
+    ) -> None:
         """Await command acknowledgement; telemetry updates reported state."""
         if channel not in (1, 2):
             raise ValueError("Relay channel must be 1 or 2")
@@ -107,10 +108,12 @@ class LT22222(Device):
         await self.async_send_downlink(
             data=bytes((0x03, *states)),
             f_port=2,
-            expires_at=datetime.now(UTC) + timedelta(seconds=30),
+            expires_at=expires_at,
         )
 
-    async def async_set_digital_output(self, channel: int, on: bool) -> None:
+    async def async_set_digital_output(
+        self, channel: int, on: bool, *, expires_at: datetime | None = None
+    ) -> None:
         """Enable an active-low output and await its command acknowledgement."""
         if channel not in (1, 2):
             raise ValueError("Digital output channel must be 1 or 2")
@@ -120,7 +123,7 @@ class LT22222(Device):
         await self.async_send_downlink(
             data=bytes((0x02, *states)),
             f_port=2,
-            expires_at=datetime.now(UTC) + timedelta(seconds=30),
+            expires_at=expires_at,
         )
 
 
