@@ -3,8 +3,6 @@
 This POC uses published `lorawan-connection==0.10.0`, including the optional
 ChirpStack and The Things Stack backends. The integration manifests pin the
 released package; no editable library checkout is required.
-Check the [PyPI publication workflow](https://github.com/home-assistant-libs/lorawan-connection/actions/runs/37364679650)
-has completed before installing version 0.10.0.
 
 Use a fresh HA test configuration for this branch. It replaces the old LoRaWAN
 server entry with ChirpStack entries and uses each server entry ID as the device
@@ -337,6 +335,15 @@ Compare vendored examples with the library checkout:
 uv run --no-sync python script/lorawan_poc/check_vendor_examples.py ../lorawan-connection
 ```
 
+
+## Add another server backend
+
+Follow the [backend author guide](https://home-assistant-libs.github.io/lorawan-connection/connection/adding-a-backend/)
+to implement inventory, events, commands, optional dependencies, and CLI selection.
+Then use [Add a server integration](https://home-assistant-libs.github.io/lorawan-connection/home-assistant/server-integration/)
+for the HA manifest, config flow, registration, recovery, and cleanup. Add the new
+stack's native identities to vendor libraries and discovery manifests. Vendor
+`DeviceManager` setup continues to use all matching connections.
 
 ## Stack identities
 
