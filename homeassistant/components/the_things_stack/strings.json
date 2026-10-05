@@ -1,0 +1,42 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "These servers and applications are already configured",
+      "reauth_successful": "Reauthentication was successful"
+    },
+    "error": {
+      "cannot_connect": "Failed to connect",
+      "invalid_auth": "Invalid API key or missing read permissions",
+      "invalid_endpoint": "Use an http(s)://host:port server URL",
+      "select_application": "Select at least one application"
+    },
+    "step": {
+      "reauth_confirm": {
+        "data": {
+          "api_key": "API key"
+        },
+        "data_description": {
+          "api_key": "Replacement key with access to the same applications."
+        },
+        "description": "Enter a replacement API key for the configured applications.",
+        "title": "Reauthenticate The Things Stack"
+      },
+      "user": {
+        "data": {
+          "api_key": "API key",
+          "application_ids": "Application IDs",
+          "endpoint": "Application Server URL",
+          "identity_server": "Identity Server URL"
+        },
+        "data_description": {
+          "api_key": "Application API key with device-read and traffic-read rights; add traffic-down-write for commands.",
+          "application_ids": "Application IDs whose devices should appear in Home Assistant.",
+          "endpoint": "Application Server gRPC address, including https:// and its port. Use http:// only for a trusted local server.",
+          "identity_server": "Identity Server gRPC address. Leave empty to use the Application Server address."
+        },
+        "description": "Enter the gRPC server URL, application IDs, and an API key with device-read and traffic-read rights. Set the Identity Server URL if it differs from the Application Server.",
+        "title": "Connect to The Things Stack"
+      }
+    }
+  }
+}

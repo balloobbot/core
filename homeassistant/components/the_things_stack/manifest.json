@@ -1,0 +1,11 @@
+{
+  "domain": "the_things_stack",
+  "name": "The Things Stack",
+  "codeowners": ["@balloob"],
+  "config_flow": true,
+  "dependencies": ["lorawan"],
+  "documentation": "https://www.home-assistant.io/integrations/the_things_stack",
+  "integration_type": "hub",
+  "iot_class": "cloud_push",
+  "requirements": ["lorawan-connection[tts]==0.9.0"]
+}

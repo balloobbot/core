@@ -31,8 +31,9 @@ SERVER_DIR = Path(
 class NetworkProxy:
     """Cut the real gRPC TCP connection without stopping the test server."""
 
-    def __init__(self) -> None:
+    def __init__(self, target_port: int = 18080) -> None:
         """Track accepted test connections."""
+        self.target_port = target_port
         self.port = 0
         self.tasks: set[asyncio.Task] = set()
 
@@ -50,7 +51,7 @@ class NetworkProxy:
         remote_writer = None
         try:
             remote_reader, remote_writer = await asyncio.open_connection(
-                "127.0.0.1", 18080
+                "127.0.0.1", self.target_port
             )
 
             async def pump(

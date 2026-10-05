@@ -1911,6 +1911,8 @@ CLAUDE.md @home-assistant/core
 /tests/components/tessie/ @Bre77
 /homeassistant/components/text/ @home-assistant/core
 /tests/components/text/ @home-assistant/core
+/homeassistant/components/the_things_stack/ @balloob
+/tests/components/the_things_stack/ @balloob
 /homeassistant/components/theben_conexa/ @mdluhosch
 /tests/components/theben_conexa/ @mdluhosch
 /homeassistant/components/thermobeacon/ @bdraco

@@ -8,7 +8,7 @@ Use a fresh HA test configuration for this branch. It replaces the old LoRaWAN
 server entry with ChirpStack entries and uses each server entry ID as the device
 identity namespace. Migration from the earlier experimental branch is not included.
 
-This worktree adds `chirpstack`, `lorawan`, `sensecap`, and `dragino` integrations. It connects to an
+This worktree adds `chirpstack`, `the_things_stack`, `lorawan`, `sensecap`, and `dragino` integrations. It connects to an
 existing ChirpStack 4.19 server and discovers provisioned devices. The first
 SenseCAP model is S2101, with temperature and humidity sensors. Provisioning,
 BLE, gateway setup, a managed HA app, and a custom frontend are later phases.
@@ -31,7 +31,7 @@ are also available on the proposal website.
 
    ```sh
    git clone --branch provider-architecture https://github.com/home-assistant-libs/lorawan-connection.git ../lorawan-connection
-   uv pip install --python .venv/bin/python -e '../lorawan-connection[chirpstack]'
+   uv pip install --python .venv/bin/python -e '../lorawan-connection[chirpstack,tts]'
    ```
 
    The ChirpStack integration requests the backend extra; LoRaWAN owns the base requirement.
@@ -82,15 +82,18 @@ retains the device identity without a codec.
 
 ## Source layout
 
-- `lorawan-connection[chirpstack]`: common event Protocols, fixture
+- `lorawan-connection`: common event Protocols, fixture
   dataclasses, and the reusable `DeviceCollection` base.
 - `lorawan_connection.backend.chirpstack`: shared API helpers for the generated gRPC client,
   complete inventory polling, individual event streams, and one subscription.
+- `lorawan_connection.backend.tts`: optional TTS registry, application traffic,
+  lifecycle events, and downlink queueing through gRPC.
 - `homeassistant/components/sensecap/_vendor/sensecap_lorawan`: S2101 decoding,
   model selection, partial state, and state observers.
 - `homeassistant/components/dragino/_vendor/dragino_lorawan`: LT-22222-L models
   and command encoding.
-- `tests/components/chirpstack`, `tests/components/lorawan`, `tests/components/sensecap`, and
+- `tests/components/chirpstack`, `tests/components/the_things_stack`,
+  `tests/components/lorawan`, `tests/components/sensecap`, and
   `tests/components/dragino`: isolated tests.
 
 The shared LoRaWAN library uses the editable branch for this experiment. The SenseCAP and Dragino libraries remain
@@ -171,8 +174,7 @@ uv run --no-sync python -m homeassistant.components.sensecap._vendor.sensecap_lo
 The command watches decoded state. Add `--list` to list devices and exit, or
 `--json` for newline-delimited JSON.
 The helper selects models, builds the collection, and observes state automatically.
-`--backend` selects the adapter. ChirpStack is the default and currently the only
-CLI backend. The helper imports it only when connecting; help needs no backend extra.
+`--backend` selects the adapter. ChirpStack is the default; `tts` selects The Things Stack. The helper imports it only when connecting; help needs no backend extra.
 Network operations are async, and key-file reads run in a worker thread.
 Event handling, model notifications, and CLI printing remain synchronous.
 A published vendor library can expose the same command under its package name.
@@ -180,7 +182,7 @@ A published vendor library can expose the same command under its package name.
 ## Tests
 
 ```sh
-uv run --no-sync pytest tests/components/chirpstack tests/components/lorawan tests/components/sensecap tests/components/dragino tests/hassfest/test_lorawan.py
+uv run --no-sync pytest tests/components/chirpstack tests/components/the_things_stack tests/components/lorawan tests/components/sensecap tests/components/dragino tests/hassfest/test_lorawan.py
 ```
 
 The real-server test is deliberately outside `tests/`, and is never collected
@@ -338,9 +340,9 @@ uv run --no-sync python script/lorawan_poc/check_vendor_examples.py ../lorawan-c
 ## Stack identities
 
 Discovery registrations are stack and brand pairs, for example
-`"lorawan": [["chirpstack", 744], ["tts", "sensecap"]]`. This branch implements
-ChirpStack registration. The earlier TTS transport experiment remains in the
-library’s `script/tts_spike/` directory; the TTS HA integration is deferred.
+`"lorawan": [["chirpstack", 744], ["tts", "sensecap"]]`. Both ChirpStack and The Things Stack register connections. The TTS external
+harness remains in the library’s `script/tts_spike/` directory and exercises the
+packaged backend.
 
 ## Connection registration
 
@@ -359,4 +361,48 @@ removes device and entity registry records. Startup checks for deleted server
 entries and reconciles each server only when its complete device list is available.
 An offline server's devices remain registered.
 
-The Things Stack integration is deferred until this architecture is reviewed.
+## The Things Stack
+
+Add integration → The Things Stack. Enter the Application Server gRPC URL, an
+application API key, and the application IDs to expose. Set the optional Identity
+Server URL when it differs from the Application Server. Use `https://host:8884`
+for TLS or explicit `http://host:port` for a disposable local server.
+
+The key needs device-read and traffic-read rights for every selected application.
+Traffic-down-write enables commands. The integration validates access, registers
+its backend with LoRaWAN, and owns recovery and reauthentication. The existing
+SenseCAP and Dragino entries attach automatically; no connection picker is needed.
+
+The TTS backend reads catalog identity from each device's `version_ids`. An S2101
+uses `sensecap` / `sensecaps2101-temp-humid`. Devices need a DevEUI. The backend
+uses gRPC application and lifecycle streams plus a 30-second inventory refresh.
+
+TTS has no downlink queue expiry. Commands with `expires_at` fail before enqueueing.
+The current Dragino relay methods require expiry and therefore do not control
+relays through TTS. Raw commands without expiry can queue and await acknowledgements.
+No physical TTS radio hardware or hosted Community Edition deployment was tested.
+
+To run the real TTS setup, CLI, uplink, TCP outage/recovery, and removal test,
+start the disposable TTS 3.36.2 environment described in the library's
+`script/tts_spike/README.md`. Then run:
+
+```sh
+LORAWAN_TTS_ADMIN_KEY_FILE=/path/to/local-test-admin-key.txt PYTHONPATH=. \
+  uv run --no-sync python -m pytest -p tests.conftest script/lorawan_poc/real_tts.py -s
+```
+
+The administrator key prepares and cleans up an isolated test application.
+The HA integration and CLI receive a read-only application key. The test uses
+loopback port 18849 and simulates application traffic, not RF reception.
+
+For the device-library CLI:
+
+```sh
+uv run --no-sync python -m homeassistant.components.sensecap._vendor.sensecap_lorawan \
+  --backend tts --server https://application-server:8884 \
+  --identity-server https://identity-server:8884 --application my-app \
+  --api-key-file /path/to/application-key --json
+```
+
+ChirpStack and TTS may be configured together. A server outage affects only its
+own devices; reconnection preserves the vendor manager and existing models.
