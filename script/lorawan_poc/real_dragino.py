@@ -231,6 +231,9 @@ async def test_real_dragino_stack(hass: HomeAssistant) -> None:
         print(
             "PASS: HA reads all analog and digital inputs; all outputs await device ACKs and receive state reports"
         )
+        manager = vendor.runtime_data
+        coordinator = manager.coordinators[(provider.entry_id, "0201010101010102")]
+        model = coordinator.data
         await proxy.close()
         async with asyncio.timeout(10):
             while provider.state is ConfigEntryState.LOADED:
@@ -245,10 +248,22 @@ async def test_real_dragino_stack(hass: HomeAssistant) -> None:
             while (
                 provider.state is not ConfigEntryState.LOADED
                 or vendor.state is not ConfigEntryState.LOADED
+                or hass.states.get("switch.workshop_relay_1").state != "off"
             ):
                 await asyncio.sleep(0.2)
+        assert vendor.runtime_data is manager
+        assert (
+            manager.coordinators[(provider.entry_id, "0201010101010102")] is coordinator
+        )
+        assert coordinator.data is model
+        await hass.services.async_call(
+            "switch", "turn_on", {"entity_id": "switch.workshop_relay_1"}, blocking=True
+        )
+        async with asyncio.timeout(30):
+            while hass.states.get("switch.workshop_relay_1").state != "on":
+                await asyncio.sleep(0.2)
         print(
-            "PASS: real TCP outage made switches unavailable; HA retried and recovered automatically"
+            "PASS: real TCP outage preserved the model; a new relay command received an ACK and state report"
         )
         await device_api.Delete(
             api.DeleteDeviceRequest(dev_eui="0201010101010102"), metadata=metadata

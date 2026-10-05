@@ -13,9 +13,21 @@ from script.hassfest.model import Config, Integration
 from script.hassfest.quality_scale_validation import discovery
 
 
-@pytest.mark.parametrize("vendors", [[], [-1], [65536], [744, 744], ["744"]])
-def test_invalid_vendor_ids(vendors: list[int | str]) -> None:
-    """Discovery identities must be a nonempty, unique list of 16-bit IDs."""
+@pytest.mark.parametrize(
+    "vendors",
+    [
+        [],
+        [744],
+        [["chirpstack", -1]],
+        [["chirpstack", 744], ["chirpstack", 744]],
+        [["", 744]],
+        [["tts", ""]],
+        [["tts", True]],
+        [["tts"]],
+    ],
+)
+def test_invalid_vendor_ids(vendors: list[object]) -> None:
+    """Discovery identities must be unique stack and native brand pairs."""
     manifest = json.loads(
         Path("homeassistant/components/sensecap/manifest.json").read_text(
             encoding="utf-8"
@@ -24,6 +36,20 @@ def test_invalid_vendor_ids(vendors: list[int | str]) -> None:
     manifest["lorawan"] = vendors
     with pytest.raises(probatio.Invalid):
         INTEGRATION_MANIFEST_SCHEMA(manifest)
+
+
+def test_stack_specific_vendor_ids() -> None:
+    """Native numeric and string brand IDs survive manifest validation."""
+    manifest = json.loads(
+        Path("homeassistant/components/sensecap/manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    manifest["lorawan"] = [["chirpstack", 744], ["tts", "sensecap"]]
+    assert INTEGRATION_MANIFEST_SCHEMA(manifest)["lorawan"] == [
+        ("chirpstack", 744),
+        ("tts", "sensecap"),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -47,7 +73,7 @@ def test_registration_requirements(
     path.mkdir()
     manifest = {
         "domain": "vendor",
-        "lorawan": [744, 676],
+        "lorawan": [["chirpstack", 744], ["tts", "sensecap"]],
         "dependencies": ["lorawan"],
         "config_flow": True,
     }
@@ -55,12 +81,16 @@ def test_registration_requirements(
     manifest.pop(missing, None)
     integration = Integration(path, _config=config, _manifest=manifest)
     source = generate_and_validate({"vendor": integration})
-    assert ast.literal_eval(ast.parse(source).body[1].value) == {"vendor": [744, 676]}
+    assert ast.literal_eval(ast.parse(source).body[1].value) == {
+        "vendor": [("chirpstack", 744), ("tts", "sensecap")]
+    }
     assert len(integration.errors) == error_count
 
 
 def test_discovery_quality_rule(tmp_path: Path, config: Config) -> None:
     """The LoRaWAN manifest hook satisfies HA's discovery quality rule."""
     (tmp_path / "config_flow.py").write_text("# Config flow is validated separately.\n")
-    integration = Integration(tmp_path, _config=config, _manifest={"lorawan": [744]})
+    integration = Integration(
+        tmp_path, _config=config, _manifest={"lorawan": [["chirpstack", 744]]}
+    )
     assert discovery.validate(config, integration, rules_done={"discovery"}) is None

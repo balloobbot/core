@@ -26,9 +26,8 @@ are also available on the proposal website.
 
 ## Try it in Home Assistant
 
-1. Run `script/setup` in this worktree. For direct test runs, install the
-   integration dependencies with
-   clone the matching library branch next to Core and install it:
+1. Run `script/setup` in this worktree. Then clone the matching library branch
+   next to Core and install it:
 
    ```sh
    git clone --branch provider-architecture https://github.com/home-assistant-libs/lorawan-connection.git ../lorawan-connection
@@ -179,7 +178,7 @@ A published vendor library can expose the same command under its package name.
 ## Tests
 
 ```sh
-uv run --no-sync pytest tests/components/lorawan tests/components/sensecap tests/components/dragino
+uv run --no-sync pytest tests/components/chirpstack tests/components/lorawan tests/components/sensecap tests/components/dragino tests/hassfest/test_lorawan.py
 ```
 
 The real-server test is deliberately outside `tests/`, and is never collected
@@ -196,7 +195,8 @@ PYTHONPATH=. uv run --no-sync python -m pytest -p tests.conftest \
 It exercises the real config flow, catalog lookup, read-only tenant key,
 OTAA join, encrypted uplink, protobuf event stream, vendor collection, HA sensors,
 upgrade to a full tenant key, reload with stable identity, a real TCP outage with
-automatic retry/recovery, and device removal. It also verifies the CLI’s inventory and decoded state against
+automatic retry/recovery using the same model and coordinator, and device removal.
+It also verifies the CLI’s inventory and decoded state against
 the same real uplink.
 No gateway hardware or RF is involved. Physical SenseCAP and Dragino devices have not been tested.
 
@@ -261,8 +261,8 @@ Never commit API keys, database files, or runtime logs.
 
 This is a POC, not a claimed Bronze-quality contribution. `quality_scale.yaml`
 records remaining distribution/documentation work as `todo`. Full Hassfest
-currently rejects that incomplete quality tier. The POC uses the published library
-from PyPI and passes the requirements generator.
+currently rejects that incomplete quality tier. The manifests pin the published
+library, but this architecture branch requires the editable checkout described above.
 Publish the SenseCAP and Dragino libraries, add official integration documentation and brands, review
 the vendor-discovery registration mechanism, and test actual SenseCAP hardware
 before an upstream contribution.
@@ -275,8 +275,8 @@ upstream ChirpStack catalog; no local catalog entry is needed.
 
 1. Provision an LT-22222-L in ChirpStack using its global **Class C** profile for
    the device's region. Configure the hardware for Class C and working mode 1–5.
-2. Select its application in the LoRaWAN integration. Confirm the discovered Dragino
-   integration. One collection contains all supported Dragino devices on that network.
+2. Select its application in the ChirpStack integration. Confirm the discovered Dragino
+   integration once. Its manager creates one collection per registered server.
 3. The integration creates switches, binary sensors, and sensors for the model.
    Values start unknown until an uplink reports them.
 4. Turn an output on or off. The library encodes FPort 2 commands and passes them through
@@ -304,8 +304,9 @@ PYTHONPATH=. uv run --no-sync python -m pytest -p tests.conftest script/lorawan_
 
 This tests all output commands through encrypted downlinks, waits for ACKs, checks
 input readings and resulting output states, rejects a read-only key, recovers after a TCP outage, and
-removes models when the server device is deleted. Run it separately from the SenseCAP
-radio test because both use the same simulated gateway ID.
+sends a new acknowledged relay command through the recovered connection using the
+same model. It removes models when the server device is deleted. Run it sequentially
+with the SenseCAP radio test because both use the same simulated gateway ID.
 
 The generic CLI can also observe the Dragino models:
 

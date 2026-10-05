@@ -300,6 +300,9 @@ async def test_real_stack(hass: HomeAssistant) -> None:
         print(
             "PASS: upgraded to full tenant key; reload retained stable device identity"
         )
+        manager = vendor.runtime_data
+        coordinator = manager.coordinators[(provider.entry_id, "0201010101010101")]
+        model = coordinator.data
         await proxy.close()
         async with asyncio.timeout(10):
             while provider.state is ConfigEntryState.LOADED:
@@ -316,10 +319,17 @@ async def test_real_stack(hass: HomeAssistant) -> None:
             while (
                 provider.state is not ConfigEntryState.LOADED
                 or vendor.state is not ConfigEntryState.LOADED
+                or hass.states.get("sensor.greenhouse_temperature").state != "21.4"
             ):
                 await asyncio.sleep(0.2)
+        assert vendor.runtime_data is manager
+        assert (
+            manager.coordinators[(provider.entry_id, "0201010101010101")] is coordinator
+        )
+        assert coordinator.data is model
+        assert hass.states.get("sensor.greenhouse_humidity").state == "31.4"
         print(
-            "PASS: real TCP outage made sensors unavailable; HA retried and recovered automatically"
+            "PASS: real TCP outage recovered sensor readings with the same manager, coordinator and model"
         )
         await device_api.Delete(
             api.DeleteDeviceRequest(dev_eui="0201010101010101"), metadata=metadata
