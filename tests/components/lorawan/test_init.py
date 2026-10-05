@@ -7,10 +7,11 @@ from lorawan_connection import Downlink, EventType
 from lorawan_connection.chirpstack import AuthenticationError, ConnectionUnavailable
 import pytest
 
-from homeassistant.components import lorawan
+from homeassistant.components.lorawan.device_manager import _async_get_connection
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import CoreState, HomeAssistant
+from homeassistant.exceptions import ConfigEntryError, ConfigEntryNotReady
 
 from .test_libraries import DESCRIPTOR, inventory
 
@@ -24,7 +25,7 @@ async def test_provider_subscription(
     mock_connection.devices = {DESCRIPTOR.dev_eui: DESCRIPTOR}
     with patch.object(hass.config_entries.flow, "async_init", AsyncMock()) as discovery:
         assert await hass.config_entries.async_setup(provider_entry.entry_id)
-        connection = lorawan.async_get_connection(
+        connection = _async_get_connection(
             hass, connection_entry_id=provider_entry.entry_id
         )
         assert connection is not mock_connection
@@ -82,10 +83,10 @@ async def test_unavailable_subscription(
     hass: HomeAssistant, provider_entry: MockConfigEntry
 ) -> None:
     """Unloaded and missing providers cannot accept subscriptions."""
-    with pytest.raises(ConnectionUnavailable):
-        lorawan.async_get_connection(hass, connection_entry_id=provider_entry.entry_id)
-    with pytest.raises(lorawan.ProviderNotFound):
-        lorawan.async_get_connection(hass, "missing")
+    with pytest.raises(ConfigEntryNotReady):
+        _async_get_connection(hass, connection_entry_id=provider_entry.entry_id)
+    with pytest.raises(ConfigEntryError):
+        _async_get_connection(hass, "missing")
 
 
 async def test_disconnect(
@@ -93,7 +94,7 @@ async def test_disconnect(
 ) -> None:
     """Unavailable is visible before consumer reload and no stale replay."""
     assert await hass.config_entries.async_setup(provider_entry.entry_id)
-    connection = lorawan.async_get_connection(
+    connection = _async_get_connection(
         hass, connection_entry_id=provider_entry.entry_id
     )
     disconnected = Mock()
@@ -103,8 +104,8 @@ async def test_disconnect(
         mock_connection._failed(ConnectionUnavailable())
         disconnected.assert_called_once_with()
         reload.assert_called_once_with(provider_entry.entry_id)
-    with pytest.raises(ConnectionUnavailable):
-        lorawan.async_get_connection(hass, connection_entry_id=provider_entry.entry_id)
+    with pytest.raises(ConfigEntryNotReady):
+        _async_get_connection(hass, connection_entry_id=provider_entry.entry_id)
     with pytest.raises(ConnectionUnavailable):
         await connection.async_subscribe(vendor_ids=frozenset({744}), callback=Mock())
     await hass.config_entries.async_unload(provider_entry.entry_id)
@@ -115,7 +116,7 @@ async def test_downlink_uses_shared_connection(
 ) -> None:
     """The consumer facade delegates commands to the provider transport."""
     assert await hass.config_entries.async_setup(provider_entry.entry_id)
-    connection = lorawan.async_get_connection(
+    connection = _async_get_connection(
         hass, connection_entry_id=provider_entry.entry_id
     )
     downlink = Downlink(DESCRIPTOR.dev_eui, 2, b"command")

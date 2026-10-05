@@ -98,11 +98,11 @@ matching rules.
 manager = entry.runtime_data = lorawan.DeviceManager(
     hass,
     entry,
-    collection=SenseCapDeviceCollection(connection),
+    create_collection=SenseCapDeviceCollection,
     create_coordinator=SenseCapCoordinator,
 )
 entry.async_on_unload(manager.close)
-await manager.async_setup()
+await manager.async_setup(connection_entry_id=entry.data["connection_entry_id"])
 ```
 
 The HA device manager creates one ordinary `DataUpdateCoordinator` per device and
@@ -119,9 +119,10 @@ registry records. Entities inherit `lorawan.LoRaWANEntity`, which handles model
 updates and late entity additions. Closing the manager closes the collection and
 retires coordinators, leaving the shared connection open.
 
-Resolve the restricted connection with `lorawan.async_get_connection(hass, connection_entry_id)`.
-Attach a reload listener with `connection.on_disconnect(callback)`. The collection
-selects its vendors and owns its subscription. Decoding, FPorts, state merging,
+Pass the selected connection entry ID explicitly to `manager.async_setup()`.
+The manager resolves the connection, creates the collection, and owns the
+consuming entry's disconnect/reload listener. It never reads the entry's data to
+select a connection. The collection selects its vendors and owns its subscription. Decoding, FPorts, state merging,
 and unsupported data stay in the vendor library. `test_libraries.py` is a runnable
 fixture example; `test_device_manager.py` exercises the shared HA lifecycle.
 

@@ -13,11 +13,7 @@ from lorawan_connection import (
 )
 from lorawan_connection.chirpstack import AuthenticationError, ChirpStackConnection
 
-from homeassistant.config_entries import (
-    SOURCE_INTEGRATION_DISCOVERY,
-    ConfigEntry,
-    ConfigEntryState,
-)
+from homeassistant.config_entries import SOURCE_INTEGRATION_DISCOVERY, ConfigEntry
 from homeassistant.const import CONF_API_KEY, EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import Event, HomeAssistant, callback as hass_callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
@@ -40,10 +36,6 @@ from .entity import LoRaWANEntity as LoRaWANEntity
 from .websocket_api import async_register
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
-
-
-class ProviderNotFound(Exception):
-    """The selected LoRaWAN config entry has been removed."""
 
 
 class _ConsumerConnection:
@@ -89,22 +81,6 @@ class LoRaWANData:
 
 
 type LoRaWANConfigEntry = ConfigEntry[LoRaWANData]
-
-
-@hass_callback
-def async_get_connection(hass: HomeAssistant, connection_entry_id: str) -> Connection:
-    """Return the provider's connected network for a device collection."""
-    entry: LoRaWANConfigEntry | None = hass.config_entries.async_get_entry(
-        connection_entry_id
-    )
-    if entry is None or entry.domain != DOMAIN:
-        raise ProviderNotFound("LoRaWAN provider entry no longer exists")
-    if (
-        entry.state is not ConfigEntryState.LOADED
-        or not entry.runtime_data.connection.available
-    ):
-        raise ConnectionUnavailable("LoRaWAN provider is not connected")
-    return entry.runtime_data.consumer
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:

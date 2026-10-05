@@ -2,17 +2,48 @@
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from lorawan_connection import Device, DeviceCollection, Unsubscribe
+from lorawan_connection import (
+    Connection,
+    ConnectionUnavailable,
+    Device,
+    DeviceCollection,
+    Unsubscribe,
+)
 
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import (
+    ConfigEntryError,
+    ConfigEntryNotReady,
+    HomeAssistantError,
+)
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
+from .const import DOMAIN
+
+if TYPE_CHECKING:
+    from . import LoRaWANConfigEntry
+
 _LOGGER = logging.getLogger(__name__)
+
+
+@callback
+def _async_get_connection(hass: HomeAssistant, connection_entry_id: str) -> Connection:
+    """Resolve the connection selected for this device manager."""
+    entry: LoRaWANConfigEntry | None = hass.config_entries.async_get_entry(
+        connection_entry_id
+    )
+    if entry is None or entry.domain != DOMAIN:
+        raise ConfigEntryError("The selected LoRaWAN connection entry was removed")
+    if (
+        entry.state is not ConfigEntryState.LOADED
+        or not entry.runtime_data.connection.available
+    ):
+        raise ConfigEntryNotReady("LoRaWAN connection is not available")
+    return entry.runtime_data.consumer
 
 
 def device_identifiers(domain: str, device: Device) -> set[tuple[str, str]]:
@@ -29,11 +60,12 @@ class DeviceManager[DeviceT: Device, CoordinatorT: DataUpdateCoordinator[Any]]:
         hass: HomeAssistant,
         entry: ConfigEntry,
         *,
-        collection: DeviceCollection[DeviceT],
+        create_collection: Callable[[Connection], DeviceCollection[DeviceT]],
         create_coordinator: Callable[[HomeAssistant, DeviceT], CoordinatorT],
     ) -> None:
-        """Register collection callbacks before models are created."""
-        self.collection = collection
+        """Store the owner and factories without selecting a connection."""
+        self._collection: DeviceCollection[DeviceT] | None = None
+        self._create_collection = create_collection
         self.coordinators: dict[str, CoordinatorT] = {}
         self._hass = hass
         self._entry = entry
@@ -41,15 +73,33 @@ class DeviceManager[DeviceT: Device, CoordinatorT: DataUpdateCoordinator[Any]]:
         self._create_coordinator = create_coordinator
         self._listeners: list[Callable[[CoordinatorT], None]] = []
         self._closed = False
-        self._unsubscribe_removed = collection.subscribe_device_removed(
-            self._device_removed
-        )
-        self._unsubscribe_added = collection.subscribe_device_added(self._device_added)
+        self._unsubscribes: list[Unsubscribe] = []
 
-    async def async_setup(self) -> None:
-        """Subscribe to devices, then remove registry records absent from the snapshot."""
+    @property
+    def collection(self) -> DeviceCollection[DeviceT]:
+        """Return the collection created during setup."""
+        if self._collection is None:
+            raise RuntimeError("Device manager has not created its collection")
+        return self._collection
+
+    async def async_setup(self, *, connection_entry_id: str) -> None:
+        """Resolve a connection, subscribe to devices, and reconcile registry records."""
+        if self._closed or self._collection is not None:
+            raise RuntimeError("Device manager is closed or already set up")
         try:
+            connection = _async_get_connection(self._hass, connection_entry_id)
+            self._unsubscribes.append(connection.on_disconnect(self._disconnected))
+            self._collection = self._create_collection(connection)
+            self._unsubscribes.append(
+                self.collection.subscribe_device_removed(self._device_removed)
+            )
+            self._unsubscribes.append(
+                self.collection.subscribe_device_added(self._device_added)
+            )
             await self.collection.async_setup()
+        except ConnectionUnavailable as error:
+            self.close()
+            raise ConfigEntryNotReady("LoRaWAN connection is not available") from error
         except BaseException:
             self.close()
             raise
@@ -67,6 +117,11 @@ class DeviceManager[DeviceT: Device, CoordinatorT: DataUpdateCoordinator[Any]]:
         ):
             if not registered.identifiers.intersection(current):
                 self._registry.async_remove_device(registered.id)
+
+    @callback
+    def _disconnected(self) -> None:
+        if not self._hass.is_stopping:
+            self._hass.config_entries.async_schedule_reload(self._entry.entry_id)
 
     @callback
     def subscribe_coordinator_added(
@@ -142,7 +197,9 @@ class DeviceManager[DeviceT: Device, CoordinatorT: DataUpdateCoordinator[Any]]:
         if self._closed:
             return
         self._closed = True
-        self.collection.close()
-        self._unsubscribe_added()
-        self._unsubscribe_removed()
+        if self._collection is not None:
+            self._collection.close()
+        for unsubscribe in reversed(self._unsubscribes):
+            unsubscribe()
+        self._unsubscribes.clear()
         self._listeners.clear()

@@ -1,15 +1,9 @@
 """Dragino devices on a LoRaWAN provider."""
 
-from homeassistant.components.lorawan import (
-    ConnectionUnavailable,
-    DeviceManager,
-    ProviderNotFound,
-    async_get_connection,
-)
+from homeassistant.components.lorawan import DeviceManager
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryError, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 
 from ._vendor.dragino_lorawan import LT22222, DraginoDevices
@@ -23,32 +17,14 @@ PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR, Platform.SWITCH]
 
 async def async_setup_entry(hass: HomeAssistant, entry: DraginoConfigEntry) -> bool:
     """Forward all vendor events to one library collection."""
-    try:
-        connection = async_get_connection(hass, entry.data["connection_entry_id"])
-    except ProviderNotFound as error:
-        raise ConfigEntryError("The selected LoRaWAN provider was removed") from error
-    except ConnectionUnavailable as error:
-        raise ConfigEntryNotReady("LoRaWAN provider is not connected") from error
-    entry.async_on_unload(
-        connection.on_disconnect(
-            lambda: (
-                None
-                if hass.is_stopping
-                else hass.config_entries.async_schedule_reload(entry.entry_id)
-            )
-        )
-    )
     manager = entry.runtime_data = DeviceManager(
         hass,
         entry,
-        collection=DraginoDevices(connection),
+        create_collection=DraginoDevices,
         create_coordinator=DraginoCoordinator,
     )
     entry.async_on_unload(manager.close)
-    try:
-        await manager.async_setup()
-    except ConnectionUnavailable as error:
-        raise ConfigEntryNotReady("LoRaWAN provider is not connected") from error
+    await manager.async_setup(connection_entry_id=entry.data["connection_entry_id"])
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
