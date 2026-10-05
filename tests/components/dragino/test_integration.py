@@ -146,14 +146,15 @@ async def test_read_only_key(
 
 
 async def test_unavailable_provider(hass: HomeAssistant) -> None:
-    """A deleted provider is a permanent setup error."""
+    """The vendor loads with no server and waits for registrations."""
     entry = MockConfigEntry(
         domain="dragino",
         data={"connection_entry_id": "missing", "network_id": "network"},
     )
     entry.add_to_hass(hass)
-    assert not await hass.config_entries.async_setup(entry.entry_id)
-    assert entry.state is ConfigEntryState.SETUP_ERROR
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    assert entry.state is ConfigEntryState.LOADED
+    await hass.config_entries.async_unload(entry.entry_id)
 
 
 async def test_command_waits_for_ack(
@@ -380,7 +381,7 @@ async def test_shared_coordinator(
     """All platforms share one subscription, without polling on manual refresh."""
     assert await async_setup_component(hass, "homeassistant", {})
     entry, emit = setup_dragino
-    coordinator = entry.runtime_data.coordinators[DESCRIPTOR.dev_eui]
+    coordinator = entry.runtime_data.coordinators[("network", DESCRIPTOR.dev_eui)]
     entities = [
         entity
         for platform in async_get_platforms(hass, "dragino")
@@ -409,14 +410,18 @@ async def test_removed_coordinators_are_released(
     """Device churn must not grow entry cleanup callbacks or retain models."""
     entry, emit = setup_dragino
     before = len(entry._on_unload)
-    reference = weakref.ref(entry.runtime_data.coordinators[DESCRIPTOR.dev_eui])
+    reference = weakref.ref(
+        entry.runtime_data.coordinators[("network", DESCRIPTOR.dev_eui)]
+    )
     emit(inventory(EventType.REMOVED))
     await hass.async_block_till_done(wait_background_tasks=True)
     gc.collect()
     assert reference() is None
     emit(inventory())
     await hass.async_block_till_done(wait_background_tasks=True)
-    reference = weakref.ref(entry.runtime_data.coordinators[DESCRIPTOR.dev_eui])
+    reference = weakref.ref(
+        entry.runtime_data.coordinators[("network", DESCRIPTOR.dev_eui)]
+    )
     emit(inventory(EventType.REMOVED))
     await hass.async_block_till_done(wait_background_tasks=True)
     gc.collect()

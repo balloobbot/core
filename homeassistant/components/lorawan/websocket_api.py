@@ -6,10 +6,9 @@ from typing import Any
 import probatio
 
 from homeassistant.components import websocket_api
-from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
 
-from .const import DOMAIN
+from .connection import DATA_REGISTRY
 from .discovery import async_unsupported_reason
 
 
@@ -31,27 +30,25 @@ async def websocket_devices(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """Return device descriptors, support reasons, and provider availability."""
-    entry = hass.config_entries.async_get_entry(msg["entry_id"])
-    if (
-        entry is None
-        or entry.domain != DOMAIN
-        or entry.state is not ConfigEntryState.LOADED
-    ):
-        connection.send_error(msg["id"], "not_found", "LoRaWAN network is not loaded")
+    registry = hass.data[DATA_REGISTRY]
+    registered = registry.connections.get(msg["entry_id"])
+    if registered is None:
+        connection.send_error(
+            msg["id"], "not_found", "LoRaWAN connection is not registered"
+        )
         return
-    runtime = entry.runtime_data
     connection.send_result(
         msg["id"],
         {
-            "available": runtime.connection.available,
+            "available": True,
             "devices": [
                 {
                     **asdict(device),
                     "unsupported_reason": await async_unsupported_reason(
-                        hass, device, runtime.integrations
+                        hass, device, registry.integrations
                     ),
                 }
-                for device in tuple(runtime.connection.devices.values())
+                for device in tuple(registered.devices.values())
             ],
         },
     )

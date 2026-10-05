@@ -133,7 +133,7 @@ async def test_real_dragino_stack(hass: HomeAssistant) -> None:
             metadata=admin_metadata,
         )
         setup_flow = await hass.config_entries.flow.async_init(
-            "lorawan",
+            "chirpstack",
             context={"source": SOURCE_USER},
             data={
                 "endpoint": f"http://127.0.0.1:{proxy.port}",
@@ -236,8 +236,9 @@ async def test_real_dragino_stack(hass: HomeAssistant) -> None:
             while provider.state is ConfigEntryState.LOADED:
                 await asyncio.sleep(0.1)
         async with asyncio.timeout(10):
-            while vendor.state is not ConfigEntryState.SETUP_RETRY:
+            while hass.states.get("switch.workshop_relay_1").state != "unavailable":
                 await asyncio.sleep(0.1)
+        assert vendor.state is ConfigEntryState.LOADED
         assert hass.states.get("switch.workshop_relay_1").state == "unavailable"
         await proxy.start()
         async with asyncio.timeout(35):
@@ -254,7 +255,7 @@ async def test_real_dragino_stack(hass: HomeAssistant) -> None:
         )
         await provider.runtime_data.connection.refresh()
         await hass.async_block_till_done(wait_background_tasks=True)
-        assert not vendor.runtime_data.collection.devices
+        assert not vendor.runtime_data.coordinators
         print("PASS: server device deletion removed the vendor model")
     finally:
         if simulator is not None and simulator.returncode is None:

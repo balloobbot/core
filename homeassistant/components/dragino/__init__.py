@@ -24,7 +24,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: DraginoConfigEntry) -> b
         create_coordinator=DraginoCoordinator,
     )
     entry.async_on_unload(manager.close)
-    await manager.async_setup(connection_entry_id=entry.data["connection_entry_id"])
+    await manager.async_setup()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
@@ -32,15 +32,3 @@ async def async_setup_entry(hass: HomeAssistant, entry: DraginoConfigEntry) -> b
 async def async_unload_entry(hass: HomeAssistant, entry: DraginoConfigEntry) -> bool:
     """Unload entities; the manager releases the collection and coordinators."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-
-
-async def async_migrate_entry(hass: HomeAssistant, entry: DraginoConfigEntry) -> bool:
-    """Rename the reference to the LoRaWAN connection entry."""
-    if entry.version > 1:
-        return False
-    if entry.minor_version < 2:
-        data = dict(entry.data)
-        if "provider_entry_id" in data:
-            data["connection_entry_id"] = data.pop("provider_entry_id")
-        hass.config_entries.async_update_entry(entry, data=data, minor_version=2)
-    return True

@@ -9,8 +9,6 @@ from unittest.mock import patch
 import weakref
 
 from lorawan_connection import DeviceEventData, EventType, UplinkData
-from lorawan_connection.chirpstack import ConnectionUnavailable
-from lorawan_connection.mock import MockConnection
 
 from homeassistant.config_entries import SOURCE_INTEGRATION_DISCOVERY, ConfigEntryState
 from homeassistant.core import HomeAssistant
@@ -18,10 +16,13 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.util import dt as dt_util
 
 from tests.common import MockConfigEntry
+from tests.components.lorawan.conftest import RegisterBackend
 from tests.components.lorawan.test_libraries import DESCRIPTOR, PAYLOAD, inventory
 
 
-async def test_sensor_lifecycle(hass: HomeAssistant) -> None:
+async def test_sensor_lifecycle(
+    hass: HomeAssistant, registered_backend: RegisterBackend
+) -> None:
     """One collection exposes two devices, merges state, and cleans up."""
     entry = MockConfigEntry(
         domain="sensecap",
@@ -29,10 +30,9 @@ async def test_sensor_lifecycle(hass: HomeAssistant) -> None:
         data={"connection_entry_id": "provider", "network_id": "network"},
     )
     entry.add_to_hass(hass)
-    connection = MockConnection([DESCRIPTOR])
+    connection, _unregister = await registered_backend("network", [DESCRIPTOR])
     with patch(
-        "homeassistant.components.lorawan.device_manager._async_get_connection",
-        return_value=connection,
+        "homeassistant.components.lorawan.connection.discovery_flow.async_create_flow"
     ):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
@@ -44,44 +44,43 @@ async def test_sensor_lifecycle(hass: HomeAssistant) -> None:
             received_at=dt_util.utcnow(),
             data=UplinkData(PAYLOAD),
         )
-        connection.emit(event)
+        connection._emit(event)
         await hass.async_block_till_done()
         assert hass.states.get("sensor.greenhouse_temperature").state == "21.4"
         assert hass.states.get("sensor.greenhouse_humidity").state == "31.4"
         second = replace(DESCRIPTOR, dev_eui="0201010101010102", name="Bedroom")
-        connection.emit(inventory(second))
+        connection._emit(inventory(second))
         await hass.async_block_till_done()
         assert hass.states.get("sensor.bedroom_temperature").state == "unknown"
         temporary = replace(DESCRIPTOR, dev_eui="0201010101010103", name="Temporary")
-        connection.emit(inventory(temporary))
-        connection.emit(inventory(temporary, EventType.REMOVED))
+        connection._emit(inventory(temporary))
+        connection._emit(inventory(temporary, EventType.REMOVED))
         await hass.async_block_till_done()
         assert hass.states.get("sensor.temporary_temperature") is None
         assert hass.states.get("sensor.temporary_humidity") is None
-        reference = weakref.ref(entry.runtime_data.coordinators[DESCRIPTOR.dev_eui])
-        connection.emit(inventory(DESCRIPTOR, EventType.REMOVED))
+        reference = weakref.ref(
+            entry.runtime_data.coordinators[("network", DESCRIPTOR.dev_eui)]
+        )
+        connection._emit(inventory(DESCRIPTOR, EventType.REMOVED))
         await hass.async_block_till_done()
         assert hass.states.get("sensor.greenhouse_temperature") is None
         gc.collect()
         assert reference() is None
-        devices = entry.runtime_data.collection
+        manager = entry.runtime_data
         assert await hass.config_entries.async_unload(entry.entry_id)
-        assert not devices.devices
+        assert not manager.coordinators
 
 
 async def test_provider_unavailable(hass: HomeAssistant) -> None:
-    """A disconnected provider causes setup retry at entry level."""
+    """A vendor can load before a server becomes available."""
     entry = MockConfigEntry(
         domain="sensecap",
         data={"connection_entry_id": "missing", "network_id": "network"},
     )
     entry.add_to_hass(hass)
-    with patch(
-        "homeassistant.components.lorawan.device_manager._async_get_connection",
-        side_effect=ConnectionUnavailable,
-    ):
-        assert not await hass.config_entries.async_setup(entry.entry_id)
-    assert entry.state == ConfigEntryState.SETUP_RETRY
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    assert entry.state == ConfigEntryState.LOADED
+    await hass.config_entries.async_unload(entry.entry_id)
 
 
 async def test_discovery(hass: HomeAssistant) -> None:

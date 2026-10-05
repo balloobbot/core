@@ -1,26 +1,11 @@
 {
   "config": {
     "abort": {
-      "already_configured": "This collection is already configured",
-      "no_provider": "First add the LoRaWAN integration."
-    },
-    "error": {
-      "invalid_provider": "Select an existing LoRaWAN integration."
+      "already_configured": "Dragino is already configured"
     },
     "step": {
       "confirm": {
-        "description": "Add supported Dragino devices from this LoRaWAN network.",
-        "title": "Add Dragino"
-      },
-      "user": {
-        "data": {
-          "connection_entry_id": "LoRaWAN network"
-        },
-        "data_description": {
-          "connection_entry_id": "The LoRaWAN integration that connects to your devices."
-        },
-        "description": "Choose the LoRaWAN network for your Dragino devices.",
-        "title": "Add Dragino"
+        "description": "Add supported Dragino devices from all configured LoRaWAN servers."
       }
     }
   },
@@ -55,7 +40,7 @@
   },
   "exceptions": {
     "command_failed": {
-      "message": "Unable to send the command. Check the LoRaWAN connection and the API key’s write permission."
+      "message": "Unable to send the command. Check the LoRaWAN connection and the API key\u2019s write permission."
     },
     "command_timeout": {
       "message": "Timed out waiting for device acknowledgement."

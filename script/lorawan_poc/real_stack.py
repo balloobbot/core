@@ -227,7 +227,7 @@ async def test_real_stack(hass: HomeAssistant) -> None:
             initial = json.loads(await cli.stdout.readline())
         assert initial["type"] == "added"
         setup_flow = await hass.config_entries.flow.async_init(
-            "lorawan",
+            "chirpstack",
             context={"source": SOURCE_USER},
             data={
                 "endpoint": f"http://127.0.0.1:{proxy.port}",
@@ -292,8 +292,11 @@ async def test_real_stack(hass: HomeAssistant) -> None:
         assert await hass.config_entries.async_reload(vendor.entry_id)
         await hass.async_block_till_done(wait_background_tasks=True)
         await asyncio.sleep(2)
-        assert vendor.data["network_id"] == provider.data["network_id"]
-        assert "0201010101010101" in vendor.runtime_data.collection.devices
+        assert vendor.data == {}
+        assert (
+            provider.entry_id,
+            "0201010101010101",
+        ) in vendor.runtime_data.coordinators
         print(
             "PASS: upgraded to full tenant key; reload retained stable device identity"
         )
@@ -302,8 +305,11 @@ async def test_real_stack(hass: HomeAssistant) -> None:
             while provider.state is ConfigEntryState.LOADED:
                 await asyncio.sleep(0.1)
         async with asyncio.timeout(10):
-            while vendor.state is not ConfigEntryState.SETUP_RETRY:
+            while (
+                hass.states.get("sensor.greenhouse_temperature").state != "unavailable"
+            ):
                 await asyncio.sleep(0.1)
+        assert vendor.state is ConfigEntryState.LOADED
         assert hass.states.get("sensor.greenhouse_temperature").state == "unavailable"
         await proxy.start()
         async with asyncio.timeout(35):
@@ -320,7 +326,7 @@ async def test_real_stack(hass: HomeAssistant) -> None:
         )
         await provider.runtime_data.connection.refresh()
         await hass.async_block_till_done(wait_background_tasks=True)
-        assert not vendor.runtime_data.collection.devices
+        assert not vendor.runtime_data.coordinators
         print("PASS: server device deletion removed the vendor model")
     finally:
         if cli is not None and cli.returncode is None:

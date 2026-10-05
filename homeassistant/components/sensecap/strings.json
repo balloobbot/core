@@ -1,26 +1,11 @@
 {
   "config": {
     "abort": {
-      "already_configured": "This collection is already configured",
-      "no_provider": "First add the LoRaWAN integration."
-    },
-    "error": {
-      "invalid_provider": "Select an existing LoRaWAN integration."
+      "already_configured": "SenseCAP is already configured"
     },
     "step": {
       "confirm": {
-        "description": "Add supported SenseCAP devices from this LoRaWAN network.",
-        "title": "Add SenseCAP"
-      },
-      "user": {
-        "data": {
-          "connection_entry_id": "LoRaWAN network"
-        },
-        "data_description": {
-          "connection_entry_id": "The LoRaWAN integration that connects to your devices."
-        },
-        "description": "Choose the LoRaWAN network for your SenseCAP devices.",
-        "title": "Add SenseCAP"
+        "description": "Add supported SenseCAP devices from all configured LoRaWAN servers."
       }
     }
   },

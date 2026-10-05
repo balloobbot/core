@@ -2,7 +2,6 @@
 
 from collections.abc import Mapping
 from typing import Any, override
-from uuid import uuid4
 
 import grpc
 from lorawan_connection import ConnectionUnavailable
@@ -17,20 +16,13 @@ from homeassistant.helpers.selector import (
     SelectSelectorConfig,
 )
 
-from .const import (
-    CONF_APPLICATION_IDS,
-    CONF_ENDPOINT,
-    CONF_NETWORK_ID,
-    CONF_TENANT_ID,
-    DOMAIN,
-)
+from .const import CONF_APPLICATION_IDS, CONF_ENDPOINT, CONF_TENANT_ID, DOMAIN
 
 
-class LoRaWANConfigFlow(ConfigFlow, domain=DOMAIN):
+class ChirpStackConfigFlow(ConfigFlow, domain=DOMAIN):
     """Discover tenants when the API key allows it; select applications."""
 
     VERSION = 1
-    MINOR_VERSION = 2
 
     def __init__(self) -> None:
         """Initialize pending input."""
@@ -171,9 +163,10 @@ class LoRaWANConfigFlow(ConfigFlow, domain=DOMAIN):
                 if error := await self._async_validate_connection():
                     errors["base"] = error
                 else:
-                    self._input[CONF_NETWORK_ID] = str(uuid4())
                     return self.async_create_entry(
-                        title=self._tenants.get(self._input[CONF_TENANT_ID], "LoRaWAN"),
+                        title=self._tenants.get(
+                            self._input[CONF_TENANT_ID], "ChirpStack"
+                        ),
                         data=self._input,
                     )
         return self.async_show_form(

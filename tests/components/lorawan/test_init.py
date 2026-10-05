@@ -7,8 +7,10 @@ from lorawan_connection import Downlink, EventType
 from lorawan_connection.chirpstack import AuthenticationError, ConnectionUnavailable
 import pytest
 
-from homeassistant.components.lorawan import ConnectionNotFound
-from homeassistant.components.lorawan.device_manager import _async_get_connection
+from homeassistant.components.lorawan import (
+    async_get_connections,
+    async_register_connection,
+)
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import CoreState, HomeAssistant
@@ -25,9 +27,7 @@ async def test_provider_subscription(
     mock_connection.devices = {DESCRIPTOR.dev_eui: DESCRIPTOR}
     with patch.object(hass.config_entries.flow, "async_init", AsyncMock()) as discovery:
         assert await hass.config_entries.async_setup(provider_entry.entry_id)
-        connection = _async_get_connection(
-            hass, connection_entry_id=provider_entry.entry_id
-        )
+        connection = async_get_connections(hass)[provider_entry.entry_id]
         assert connection is not mock_connection
         assert {name for name in dir(connection) if not name.startswith("_")} == {
             "async_subscribe",
@@ -36,10 +36,7 @@ async def test_provider_subscription(
         }
         await hass.async_block_till_done(wait_background_tasks=True)
         discovery.assert_awaited_once()
-        assert discovery.call_args.kwargs["data"] == {
-            "connection_entry_id": provider_entry.entry_id,
-            "network_id": provider_entry.data["network_id"],
-        }
+        assert discovery.call_args.kwargs["data"] == {}
         consumer, disconnected = Mock(), Mock()
         unsubscribe_disconnect = connection.on_disconnect(disconnected)
         unsubscribe = await connection.async_subscribe(
@@ -79,24 +76,12 @@ async def test_setup_failure(
     assert provider_entry.state == state
 
 
-async def test_unavailable_subscription(
-    hass: HomeAssistant, provider_entry: MockConfigEntry
-) -> None:
-    """Unloaded and missing providers cannot accept subscriptions."""
-    with pytest.raises(ConnectionUnavailable):
-        _async_get_connection(hass, connection_entry_id=provider_entry.entry_id)
-    with pytest.raises(ConnectionNotFound):
-        _async_get_connection(hass, "missing")
-
-
 async def test_disconnect(
     hass: HomeAssistant, provider_entry: MockConfigEntry, mock_connection: Mock
 ) -> None:
     """Unavailable is visible before consumer reload and no stale replay."""
     assert await hass.config_entries.async_setup(provider_entry.entry_id)
-    connection = _async_get_connection(
-        hass, connection_entry_id=provider_entry.entry_id
-    )
+    connection = async_get_connections(hass)[provider_entry.entry_id]
     disconnected = Mock()
     connection.on_disconnect(disconnected)
     await connection.async_subscribe(
@@ -106,8 +91,7 @@ async def test_disconnect(
         mock_connection._failed(ConnectionUnavailable())
         disconnected.assert_called_once_with()
         reload.assert_called_once_with(provider_entry.entry_id)
-    with pytest.raises(ConnectionUnavailable):
-        _async_get_connection(hass, connection_entry_id=provider_entry.entry_id)
+    assert provider_entry.entry_id not in async_get_connections(hass)
     with pytest.raises(ConnectionUnavailable):
         await connection.async_subscribe(
             brands=frozenset({("chirpstack", 744)}), callback=Mock()
@@ -120,9 +104,7 @@ async def test_downlink_uses_shared_connection(
 ) -> None:
     """The consumer facade delegates commands to the provider transport."""
     assert await hass.config_entries.async_setup(provider_entry.entry_id)
-    connection = _async_get_connection(
-        hass, connection_entry_id=provider_entry.entry_id
-    )
+    connection = async_get_connections(hass)[provider_entry.entry_id]
     downlink = Downlink(DESCRIPTOR.dev_eui, 2, b"command")
     assert await connection.async_send_downlink(downlink) == "queue-id"
     mock_connection.async_send_downlink.assert_awaited_once_with(downlink)
@@ -193,12 +175,42 @@ async def test_dismissed_discovery_returns(
     await hass.config_entries.async_unload(provider_entry.entry_id)
 
 
-async def test_tenant_identity_migration(
+async def test_registration_failure(
     hass: HomeAssistant, provider_entry: MockConfigEntry, mock_connection: Mock
 ) -> None:
-    """Changing the provider unique ID preserves entity network identity."""
+    """Failed replay does not publish a half-registered connection."""
+    mock_connection.async_subscribe.side_effect = ConnectionUnavailable("Replay failed")
+    assert not await hass.config_entries.async_setup(provider_entry.entry_id)
+    assert provider_entry.state is ConfigEntryState.SETUP_RETRY
+    assert not async_get_connections(hass)
+    mock_connection.close.assert_awaited_once()
+
+
+async def test_disconnect_during_registration(
+    hass: HomeAssistant, provider_entry: MockConfigEntry, mock_connection: Mock
+) -> None:
+    """Disconnect while awaiting replay prevents registration."""
+
+    async def interrupted(**kwargs: object) -> Mock:
+        mock_connection._failed(ConnectionUnavailable())
+        return Mock()
+
+    mock_connection.async_subscribe.side_effect = interrupted
+    assert not await hass.config_entries.async_setup(provider_entry.entry_id)
+    assert not async_get_connections(hass)
+    assert provider_entry.state is ConfigEntryState.SETUP_RETRY
+
+
+async def test_duplicate_registration(
+    hass: HomeAssistant, provider_entry: MockConfigEntry, mock_connection: Mock
+) -> None:
+    """A duplicate must not replace an existing active connection."""
+
     assert await hass.config_entries.async_setup(provider_entry.entry_id)
-    assert provider_entry.unique_id == "tenant"
-    assert provider_entry.minor_version == 2
-    assert provider_entry.data["network_id"] == "network"
+    original = async_get_connections(hass)[provider_entry.entry_id]
+    with pytest.raises(ValueError, match="already registered"):
+        await async_register_connection(
+            hass, provider_entry, connection=mock_connection
+        )
+    assert async_get_connections(hass)[provider_entry.entry_id] is original
     await hass.config_entries.async_unload(provider_entry.entry_id)

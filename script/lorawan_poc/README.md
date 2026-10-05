@@ -1,9 +1,14 @@
 # LoRaWAN proof of concept
 
-The POC uses `lorawan-connection[chirpstack]==0.9.0` from PyPI.
-It includes collection-managed subscriptions and a restricted consumer connection.
+This architecture branch uses the matching `provider-architecture` branch of
+`lorawan-connection`. Install it into the Core environment before running the POC.
+The manifests retain the last released version until this work is reviewed.
 
-This worktree adds `lorawan`, `sensecap`, and `dragino` integrations. It connects to an
+Use a fresh HA test configuration for this branch. It replaces the old LoRaWAN
+server entry with ChirpStack entries and uses each server entry ID as the device
+identity namespace. Migration from the earlier experimental branch is not included.
+
+This worktree adds `chirpstack`, `lorawan`, `sensecap`, and `dragino` integrations. It connects to an
 existing ChirpStack 4.19 server and discovers provisioned devices. The first
 SenseCAP model is S2101, with temperature and humidity sensors. Provisioning,
 BLE, gateway setup, a managed HA app, and a custom frontend are later phases.
@@ -11,7 +16,7 @@ BLE, gateway setup, a managed HA app, and a custom frontend are later phases.
 ## Get the POC branch
 
 ```sh
-git clone --branch lorawan-poc --single-branch https://github.com/balloobbot/core.git core-lorawan
+git clone --branch lorawan-provider-architecture --single-branch https://github.com/balloobbot/core.git core-lorawan
 cd core-lorawan
 ```
 
@@ -23,24 +28,30 @@ are also available on the proposal website.
 
 1. Run `script/setup` in this worktree. For direct test runs, install the
    integration dependencies with
-   `uv pip install "lorawan-connection[chirpstack]==0.9.0"`.
-   HA installs the package and its backend dependencies from the LoRaWAN manifest when setting up the integration.
+   clone the matching library branch next to Core and install it:
+
+   ```sh
+   git clone --branch provider-architecture https://github.com/home-assistant-libs/lorawan-connection.git ../lorawan-connection
+   uv pip install --python .venv/bin/python -e '../lorawan-connection[chirpstack]'
+   ```
+
+   The ChirpStack integration requests the backend extra; LoRaWAN owns the base requirement.
 2. On ChirpStack, import the current device-profile catalog. Assign the **global
    SenseCAP S2101 catalog profile** for the device's radio region. A custom
    tenant profile with the same name is not enough: ChirpStack ignores the
    `device_id` field when creating a custom profile.
 3. Enable ChirpStack's per-device event log (enabled by default). The current
    adapter requires the internal `StreamDeviceEvents` gRPC endpoint.
-4. Add integration → LoRaWAN. Enter `https://host:port` and an API key. For an
+4. Add integration → ChirpStack. Enter `https://host:port` and an API key. For an
    unencrypted local server, explicitly use `http://host:port`. TLS uses the
    platform's trusted roots; there is no automatic downgrade or insecure TLS.
 5. Select a tenant and at least one application. Setup validates device/profile read access before creating the entry. Global keys can list tenants. Tenant-scoped
    keys require their tenant UUID. ChirpStack reports insufficient listing scope
    as UNAUTHENTICATED, so the flow validates the key after selecting a tenant. Full-access and read-only keys both work.
-6. Confirm the discovered SenseCAP integration. It creates one collection for
-   the network, and adds further supported devices automatically. You can also
-   use Add integration → SenseCAP or Dragino. With one LoRaWAN entry, it selects that network
-   automatically; with several, it asks which network to use.
+6. Confirm the discovered SenseCAP or Dragino integration. Each vendor has one
+   entry covering supported devices across all registered servers. There is no
+   connection picker. Application selection in the server integration defines scope.
+   Vendor setup can run before servers connect; new registrations are picked up automatically.
 
 The admin-only `lorawan/devices/list` websocket command takes `entry_id` and returns
 current descriptors and availability. Each descriptor includes `unsupported_reason`:
@@ -74,10 +85,10 @@ retains the device identity without a codec.
   model selection, partial state, and state observers.
 - `homeassistant/components/dragino/_vendor/dragino_lorawan`: LT-22222-L models
   and command encoding.
-- `tests/components/lorawan`, `tests/components/sensecap`, and
+- `tests/components/chirpstack`, `tests/components/lorawan`, `tests/components/sensecap`, and
   `tests/components/dragino`: isolated tests.
 
-The shared LoRaWAN library uses the PyPI version pinned in the manifest. The SenseCAP and Dragino libraries remain
+The shared LoRaWAN library uses the editable branch for this experiment. The SenseCAP and Dragino libraries remain
 vendored under temporary Core namespaces; they use no HA APIs and import
 `lorawan_connection` directly. ChirpStack API helpers ship in the optional shared-library backend. Generated ChirpStack bindings,
 gRPC, and protobuf remain ordinary dependencies. No JavaScript decoder runs in
@@ -102,7 +113,7 @@ manager = entry.runtime_data = lorawan.DeviceManager(
     create_coordinator=SenseCapCoordinator,
 )
 entry.async_on_unload(manager.close)
-await manager.async_setup(connection_entry_id=entry.data["connection_entry_id"])
+await manager.async_setup()
 ```
 
 The HA device manager creates one ordinary `DataUpdateCoordinator` per device and
@@ -116,7 +127,7 @@ The manager removes registry records on live device removal and reconciles remov
 that happened while HA was offline after successful setup. It updates registered
 device names when descriptors change. Ordinary unload and failed setup preserve
 registry records. Entities inherit `lorawan.LoRaWANEntity`, which handles model
-updates and late entity additions. Closing the manager closes the collection and
+updates and late entity additions. Closing the manager closes its collections and
 retires coordinators, leaving the shared connection open.
 
 Pass the selected connection entry ID explicitly to `manager.async_setup()`.
@@ -337,3 +348,22 @@ Discovery registrations are stack and brand pairs, for example
 connects to ChirpStack. The separate TTS transport spike lives in the library's
 `script/tts_spike/` directory; this branch tests the shared identity and discovery
 contract, not a TTS config flow.
+
+## Connection registration
+
+ChirpStack owns credentials, transport recovery, and reauthentication. It passes
+its config entry ID as the backend's `network_id`, then calls
+`await lorawan.async_register_connection(hass, entry, connection=connection)`.
+The returned callback withdraws the registration without closing the transport.
+
+The LoRaWAN device manager keeps one collection per server. Temporary disconnection
+makes only that server's coordinators unavailable. Reconnection keeps existing
+models and entities, updates descriptors, and removes devices missing from the
+new device list. Pending command waits fail on disconnect.
+
+Device deletion, loss of model support, or deletion of a server config entry
+removes device and entity registry records. Startup checks for deleted server
+entries and reconciles each server only when its complete device list is available.
+An offline server's devices remain registered.
+
+The Things Stack integration is deferred until this architecture is reviewed.
