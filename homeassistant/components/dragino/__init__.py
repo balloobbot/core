@@ -1,14 +1,9 @@
 """Dragino devices on a LoRaWAN provider."""
 
-from homeassistant.components.lorawan import (
-    ConnectionNotFound,
-    ConnectionUnavailable,
-    DeviceManager,
-)
+from homeassistant.components.lorawan import DeviceManager
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryError, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 
 from ._vendor.dragino_lorawan import LT22222, DraginoDevices
@@ -29,14 +24,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: DraginoConfigEntry) -> b
         create_coordinator=DraginoCoordinator,
     )
     entry.async_on_unload(manager.close)
-    try:
-        await manager.async_setup(connection_entry_id=entry.data["connection_entry_id"])
-    except ConnectionUnavailable as error:
-        raise ConfigEntryNotReady("LoRaWAN connection is not available") from error
-    except ConnectionNotFound as error:
-        raise ConfigEntryError(
-            "The selected LoRaWAN connection entry was removed"
-        ) from error
+    await manager.async_setup(connection_entry_id=entry.data["connection_entry_id"])
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 

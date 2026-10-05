@@ -14,7 +14,11 @@ from lorawan_connection import (
 
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import (
+    ConfigEntryError,
+    ConfigEntryNotReady,
+    HomeAssistantError,
+)
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
@@ -26,7 +30,7 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
-class ConnectionNotFound(Exception):
+class ConnectionNotFound(HomeAssistantError):
     """The selected LoRaWAN connection entry does not exist."""
 
 
@@ -47,7 +51,7 @@ def _async_get_connection(hass: HomeAssistant, connection_entry_id: str) -> Conn
 
 
 def device_identifier(domain: str, device: Device) -> tuple[str, str]:
-    """Identify a physical device within its vendor integration and network."""
+    """Build device registry identifier from the integration domain, network ID and DevEUI."""
     descriptor = device.descriptor
     return (domain, f"{descriptor.network_id}:{descriptor.dev_eui}")
 
@@ -83,7 +87,11 @@ class DeviceManager[DeviceT: Device, CoordinatorT: DataUpdateCoordinator[Any]]:
         return self._collection
 
     async def async_setup(self, *, connection_entry_id: str) -> None:
-        """Resolve a connection, subscribe to devices, and reconcile registry records."""
+        """Resolve a connection, subscribe to devices, and reconcile registry records.
+
+        Raise ConfigEntryNotReady when the connection is unavailable.
+        Raise ConfigEntryError when the selected connection entry does not exist.
+        """
         if self._closed or self._collection is not None:
             raise RuntimeError("Device manager is closed or already set up")
         try:
@@ -97,6 +105,14 @@ class DeviceManager[DeviceT: Device, CoordinatorT: DataUpdateCoordinator[Any]]:
                 self.collection.subscribe_device_added(self._device_added)
             )
             await self.collection.async_setup()
+        except ConnectionUnavailable as error:
+            self.close()
+            raise ConfigEntryNotReady("LoRaWAN connection is not available") from error
+        except ConnectionNotFound as error:
+            self.close()
+            raise ConfigEntryError(
+                "The selected LoRaWAN connection entry was removed"
+            ) from error
         except BaseException:
             self.close()
             raise
@@ -123,7 +139,10 @@ class DeviceManager[DeviceT: Device, CoordinatorT: DataUpdateCoordinator[Any]]:
     def subscribe_coordinator_added(
         self, listener: Callable[[CoordinatorT], None]
     ) -> Unsubscribe:
-        """Deliver existing coordinators immediately, followed by future additions."""
+        """Get notified when a new coordinator for a device has been added.
+
+        Existing coordinators are delivered immediately on subscription.
+        """
         if self._closed:
             raise RuntimeError("Device manager is closed")
 

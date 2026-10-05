@@ -102,12 +102,7 @@ manager = entry.runtime_data = lorawan.DeviceManager(
     create_coordinator=SenseCapCoordinator,
 )
 entry.async_on_unload(manager.close)
-try:
-    await manager.async_setup(connection_entry_id=entry.data["connection_entry_id"])
-except lorawan.ConnectionUnavailable as error:
-    raise ConfigEntryNotReady("LoRaWAN connection is not available") from error
-except lorawan.ConnectionNotFound as error:
-    raise ConfigEntryError("The selected LoRaWAN connection entry was removed") from error
+await manager.async_setup(connection_entry_id=entry.data["connection_entry_id"])
 ```
 
 The HA device manager creates one ordinary `DataUpdateCoordinator` per device and
