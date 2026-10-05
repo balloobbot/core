@@ -111,7 +111,7 @@ The coordinator listens to model updates and shuts down when its model leaves th
 collection, including during unload. Entities inherit `lorawan.LoRaWANEntity`,
 which handles model updates and late entity additions. Collection callbacks remove
 devices through the device registry, including startup reconciliation for offline removals.
-Resolve the restricted connection with `lorawan.get_connection(hass, provider_entry_id)`.
+Resolve the restricted connection with `lorawan.get_connection(hass, connection_entry_id)`.
 Attach a reload listener with `connection.on_disconnect(callback)`. The collection
 selects its vendors and owns its subscription; closing it leaves the connection open.
 The collection receives events through its connection; decoding, FPorts, state merging,

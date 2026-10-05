@@ -14,10 +14,10 @@
       },
       "user": {
         "data": {
-          "provider_entry_id": "LoRaWAN network"
+          "connection_entry_id": "LoRaWAN network"
         },
         "data_description": {
-          "provider_entry_id": "The LoRaWAN integration that connects to your devices."
+          "connection_entry_id": "The LoRaWAN integration that connects to your devices."
         },
         "description": "Choose the LoRaWAN network for your SenseCAP devices.",
         "title": "Add SenseCAP"

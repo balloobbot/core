@@ -24,7 +24,9 @@ async def test_provider_subscription(
     mock_connection.devices = {DESCRIPTOR.dev_eui: DESCRIPTOR}
     with patch.object(hass.config_entries.flow, "async_init", AsyncMock()) as discovery:
         assert await hass.config_entries.async_setup(provider_entry.entry_id)
-        connection = lorawan.get_connection(hass, provider_entry.entry_id)
+        connection = lorawan.get_connection(
+            hass, connection_entry_id=provider_entry.entry_id
+        )
         assert connection is not mock_connection
         assert {name for name in dir(connection) if not name.startswith("_")} == {
             "async_subscribe",
@@ -33,6 +35,10 @@ async def test_provider_subscription(
         }
         await hass.async_block_till_done(wait_background_tasks=True)
         discovery.assert_awaited_once()
+        assert discovery.call_args.kwargs["data"] == {
+            "connection_entry_id": provider_entry.entry_id,
+            "network_id": provider_entry.data["network_id"],
+        }
         consumer, disconnected = Mock(), Mock()
         unsubscribe_disconnect = connection.on_disconnect(disconnected)
         unsubscribe = await connection.async_subscribe(
@@ -77,7 +83,7 @@ async def test_unavailable_subscription(
 ) -> None:
     """Unloaded and missing providers cannot accept subscriptions."""
     with pytest.raises(ConnectionUnavailable):
-        lorawan.get_connection(hass, provider_entry.entry_id)
+        lorawan.get_connection(hass, connection_entry_id=provider_entry.entry_id)
     with pytest.raises(lorawan.ProviderNotFound):
         lorawan.get_connection(hass, "missing")
 
@@ -87,7 +93,9 @@ async def test_disconnect(
 ) -> None:
     """Unavailable is visible before consumer reload and no stale replay."""
     assert await hass.config_entries.async_setup(provider_entry.entry_id)
-    connection = lorawan.get_connection(hass, provider_entry.entry_id)
+    connection = lorawan.get_connection(
+        hass, connection_entry_id=provider_entry.entry_id
+    )
     disconnected = Mock()
     connection.on_disconnect(disconnected)
     await connection.async_subscribe(vendor_ids=frozenset({744}), callback=Mock())
@@ -96,7 +104,7 @@ async def test_disconnect(
         disconnected.assert_called_once_with()
         reload.assert_called_once_with(provider_entry.entry_id)
     with pytest.raises(ConnectionUnavailable):
-        lorawan.get_connection(hass, provider_entry.entry_id)
+        lorawan.get_connection(hass, connection_entry_id=provider_entry.entry_id)
     with pytest.raises(ConnectionUnavailable):
         await connection.async_subscribe(vendor_ids=frozenset({744}), callback=Mock())
     await hass.config_entries.async_unload(provider_entry.entry_id)
@@ -107,7 +115,9 @@ async def test_downlink_uses_shared_connection(
 ) -> None:
     """The consumer facade delegates commands to the provider transport."""
     assert await hass.config_entries.async_setup(provider_entry.entry_id)
-    connection = lorawan.get_connection(hass, provider_entry.entry_id)
+    connection = lorawan.get_connection(
+        hass, connection_entry_id=provider_entry.entry_id
+    )
     downlink = Downlink(DESCRIPTOR.dev_eui, 2, b"command")
     assert await connection.async_send_downlink(downlink) == "queue-id"
     mock_connection.async_send_downlink.assert_awaited_once_with(downlink)

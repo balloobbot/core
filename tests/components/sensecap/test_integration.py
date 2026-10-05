@@ -26,7 +26,7 @@ async def test_sensor_lifecycle(hass: HomeAssistant) -> None:
     entry = MockConfigEntry(
         domain="sensecap",
         title="SenseCAP",
-        data={"provider_entry_id": "provider", "network_id": "network"},
+        data={"connection_entry_id": "provider", "network_id": "network"},
     )
     entry.add_to_hass(hass)
     connection = MockConnection([DESCRIPTOR])
@@ -73,7 +73,7 @@ async def test_provider_unavailable(hass: HomeAssistant) -> None:
     """A disconnected provider causes setup retry at entry level."""
     entry = MockConfigEntry(
         domain="sensecap",
-        data={"provider_entry_id": "missing", "network_id": "network"},
+        data={"connection_entry_id": "missing", "network_id": "network"},
     )
     entry.add_to_hass(hass)
     with patch(
@@ -86,7 +86,7 @@ async def test_provider_unavailable(hass: HomeAssistant) -> None:
 
 async def test_discovery(hass: HomeAssistant) -> None:
     """Discover one collection per provider, with explicit confirmation."""
-    data = {"provider_entry_id": "provider", "network_id": "network"}
+    data = {"connection_entry_id": "provider", "network_id": "network"}
     result = await hass.config_entries.flow.async_init(
         "sensecap", context={"source": SOURCE_INTEGRATION_DISCOVERY}, data=data
     )

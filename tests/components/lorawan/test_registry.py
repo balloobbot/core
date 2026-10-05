@@ -40,7 +40,7 @@ async def test_registry_lifecycle(
         )
     )
     entry = MockConfigEntry(
-        domain=domain, data={"provider_entry_id": "provider", "network_id": "network"}
+        domain=domain, data={"connection_entry_id": "provider", "network_id": "network"}
     )
     entry.add_to_hass(hass)
     connection = MockConnection([descriptor])
@@ -105,7 +105,7 @@ async def test_subscription_failure_preserves_registry(
 ) -> None:
     """An unavailable snapshot cannot establish that a device was removed."""
     entry = MockConfigEntry(
-        domain=domain, data={"provider_entry_id": "provider", "network_id": "network"}
+        domain=domain, data={"connection_entry_id": "provider", "network_id": "network"}
     )
     entry.add_to_hass(hass)
     existing = device_registry.async_get_or_create(
@@ -136,7 +136,7 @@ async def test_removal_during_entity_add(
     """Removal while async_added_to_hass is suspended leaves no orphan entities."""
     entry = MockConfigEntry(
         domain="sensecap",
-        data={"provider_entry_id": "provider", "network_id": "network"},
+        data={"connection_entry_id": "provider", "network_id": "network"},
     )
     entry.add_to_hass(hass)
     connection = MockConnection([DESCRIPTOR])
@@ -165,3 +165,33 @@ async def test_removal_during_entity_add(
     assert hass.states.get("sensor.greenhouse_temperature") is None
     assert hass.states.get("sensor.greenhouse_humidity") is None
     await hass.config_entries.async_unload(entry.entry_id)
+
+
+@pytest.mark.parametrize("domain", ["sensecap", "dragino"])
+@pytest.mark.parametrize("entry_key", ["provider_entry_id", "connection_entry_id"])
+async def test_connection_entry_migration(
+    hass: HomeAssistant, domain: str, entry_key: str
+) -> None:
+    """Existing collections retain their connection and network when renamed."""
+    entry = MockConfigEntry(
+        domain=domain,
+        version=1,
+        minor_version=1,
+        unique_id="network",
+        data={entry_key: "connection", "network_id": "network"},
+    )
+    entry.add_to_hass(hass)
+    with patch(
+        f"homeassistant.components.{domain}.get_connection",
+        return_value=MockConnection(),
+    ) as get_connection:
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+    get_connection.assert_called_once_with(hass, "connection")
+    assert entry.data == {
+        "connection_entry_id": "connection",
+        "network_id": "network",
+    }
+    assert (entry.version, entry.minor_version) == (1, 2)
+    assert entry.unique_id == "network"
+    assert await hass.config_entries.async_unload(entry.entry_id)

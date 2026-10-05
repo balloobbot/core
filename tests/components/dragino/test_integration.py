@@ -147,7 +147,8 @@ async def test_read_only_key(
 async def test_unavailable_provider(hass: HomeAssistant) -> None:
     """A deleted provider is a permanent setup error."""
     entry = MockConfigEntry(
-        domain="dragino", data={"provider_entry_id": "missing", "network_id": "network"}
+        domain="dragino",
+        data={"connection_entry_id": "missing", "network_id": "network"},
     )
     entry.add_to_hass(hass)
     assert not await hass.config_entries.async_setup(entry.entry_id)

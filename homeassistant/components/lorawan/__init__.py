@@ -88,10 +88,10 @@ type LoRaWANConfigEntry = ConfigEntry[LoRaWANData]
 
 
 @hass_callback
-def get_connection(hass: HomeAssistant, provider_entry_id: str) -> Connection:
+def get_connection(hass: HomeAssistant, connection_entry_id: str) -> Connection:
     """Return the provider's connected network for a device collection."""
     entry: LoRaWANConfigEntry | None = hass.config_entries.async_get_entry(
-        provider_entry_id
+        connection_entry_id
     )
     if entry is None or entry.domain != DOMAIN:
         raise ProviderNotFound("LoRaWAN provider entry no longer exists")
@@ -137,7 +137,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: LoRaWANConfigEntry) -> b
                 domain,
                 context={"source": SOURCE_INTEGRATION_DISCOVERY},
                 data={
-                    "provider_entry_id": entry.entry_id,
+                    "connection_entry_id": entry.entry_id,
                     CONF_NETWORK_ID: entry.data[CONF_NETWORK_ID],
                 },
             )

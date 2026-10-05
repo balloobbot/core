@@ -49,7 +49,7 @@ async def test_single_provider(hass: HomeAssistant, provider: MockConfigEntry) -
         await hass.async_block_till_done(wait_background_tasks=True)
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"] == {
-        "provider_entry_id": provider.entry_id,
+        "connection_entry_id": provider.entry_id,
         "network_id": "home",
     }
     assert result["result"].unique_id == "home"
@@ -67,11 +67,11 @@ async def test_multiple_providers(hass: HomeAssistant) -> None:
     )
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "user"
-    assert result["data_schema"].schema["provider_entry_id"].config == {
+    assert result["data_schema"].schema["connection_entry_id"].config == {
         "integration": "lorawan"
     }
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {"provider_entry_id": second.entry_id}
+        result["flow_id"], {"connection_entry_id": second.entry_id}
     )
     assert result["step_id"] == "confirm"
     with patch("homeassistant.components.dragino.async_setup_entry", return_value=True):
@@ -79,7 +79,7 @@ async def test_multiple_providers(hass: HomeAssistant) -> None:
         await hass.async_block_till_done(wait_background_tasks=True)
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"] == {
-        "provider_entry_id": second.entry_id,
+        "connection_entry_id": second.entry_id,
         "network_id": "garden",
     }
     assert result["result"].unique_id == "garden"
@@ -93,7 +93,7 @@ async def test_invalid_provider(hass: HomeAssistant, provider_id: str) -> None:
     result = await hass.config_entries.flow.async_init(
         "dragino",
         context={"source": SOURCE_USER},
-        data={"provider_entry_id": provider_id},
+        data={"connection_entry_id": provider_id},
     )
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "user"
@@ -107,7 +107,7 @@ async def test_already_configured(
     MockConfigEntry(
         domain="dragino",
         unique_id="home",
-        data={"provider_entry_id": provider.entry_id, "network_id": "home"},
+        data={"connection_entry_id": provider.entry_id, "network_id": "home"},
     ).add_to_hass(hass)
     result = await hass.config_entries.flow.async_init(
         "dragino", context={"source": SOURCE_USER}

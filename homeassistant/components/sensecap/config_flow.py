@@ -14,6 +14,7 @@ class SenseCapConfigFlow(ConfigFlow, domain=DOMAIN):
     """Discover collections through the LoRaWAN provider."""
 
     VERSION = 1
+    MINOR_VERSION = 2
 
     def __init__(self) -> None:
         """Initialize discovery context."""
@@ -35,12 +36,12 @@ class SenseCapConfigFlow(ConfigFlow, domain=DOMAIN):
 
         errors = {}
         if user_input is None and len(providers) == 1:
-            user_input = {"provider_entry_id": next(iter(providers))}
+            user_input = {"connection_entry_id": next(iter(providers))}
         if user_input is not None:
-            if provider := providers.get(user_input["provider_entry_id"]):
+            if provider := providers.get(user_input["connection_entry_id"]):
                 return await self.async_step_integration_discovery(
                     {
-                        "provider_entry_id": provider.entry_id,
+                        "connection_entry_id": provider.entry_id,
                         "network_id": provider.data["network_id"],
                     }
                 )
@@ -50,7 +51,7 @@ class SenseCapConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=probatio.Schema(
                 {
-                    probatio.Required("provider_entry_id"): ConfigEntrySelector(
+                    probatio.Required("connection_entry_id"): ConfigEntrySelector(
                         {"integration": "lorawan"}
                     )
                 }

@@ -33,7 +33,7 @@ class DraginoData:
 async def async_setup_entry(hass: HomeAssistant, entry: DraginoConfigEntry) -> bool:
     """Forward all vendor events to one library collection."""
     try:
-        connection = get_connection(hass, entry.data["provider_entry_id"])
+        connection = get_connection(hass, entry.data["connection_entry_id"])
     except ProviderNotFound as error:
         raise ConfigEntryError("The selected LoRaWAN provider was removed") from error
     except ConnectionUnavailable as error:
@@ -111,3 +111,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: DraginoConfigEntry) -> b
 async def async_unload_entry(hass: HomeAssistant, entry: DraginoConfigEntry) -> bool:
     """Unload entities; entry callbacks release collection and subscription."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: DraginoConfigEntry) -> bool:
+    """Rename the reference to the LoRaWAN connection entry."""
+    if entry.version > 1:
+        return False
+    if entry.minor_version < 2:
+        data = dict(entry.data)
+        if "provider_entry_id" in data:
+            data["connection_entry_id"] = data.pop("provider_entry_id")
+        hass.config_entries.async_update_entry(entry, data=data, minor_version=2)
+    return True
