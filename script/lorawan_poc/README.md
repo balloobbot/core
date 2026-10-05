@@ -36,6 +36,12 @@ are also available on the proposal website.
    ```
 
    The ChirpStack integration requests the backend extra; LoRaWAN owns the base requirement.
+   When starting HA, prevent it from replacing the editable library with the last
+   published version:
+
+   ```sh
+   uv run --no-sync python -m homeassistant --config ../lorawan-test-config --skip-pip-packages lorawan-connection
+   ```
 2. On ChirpStack, import the current device-profile catalog. Assign the **global
    SenseCAP S2101 catalog profile** for the device's radio region. A custom
    tenant profile with the same name is not enough: ChirpStack ignores the
@@ -130,12 +136,11 @@ registry records. Entities inherit `lorawan.LoRaWANEntity`, which handles model
 updates and late entity additions. Closing the manager closes its collections and
 retires coordinators, leaving the shared connection open.
 
-Pass the selected connection entry ID explicitly to `manager.async_setup()`.
-The manager resolves the connection, creates the collection, and owns the
-consuming entry's disconnect/reload listener. It never reads the entry's data to
-select a connection. The collection selects its vendors and owns its subscription. Decoding, FPorts, state merging,
-and unsupported data stay in the vendor library. `test_libraries.py` is a runnable
-fixture example; `test_device_manager.py` exercises the shared HA lifecycle.
+Call `manager.async_setup()` without a server selection. The manager creates
+collections for current connections and attaches connections registered later.
+Decoding, FPorts, state merging, and unsupported data stay in the vendor library.
+`test_libraries.py` is a runnable fixture example; `test_device_manager.py` exercises
+the shared lifecycle across connections.
 
 Events are borrowed, read-only Protocols. `DeviceEventData` is a small envelope;
 its payload is the original generated protobuf object, not a reconstructed
@@ -150,17 +155,10 @@ usually mean polling discovers a new device first. Unsubscribe stops callback
 delivery; the transport owner must await `close()` to release the connection.
 Callbacks are synchronous and must not block.
 
-A disconnect makes the provider unavailable before notifying consumers. HA
-reloads the collection and uses `ConfigEntryNotReady` until the provider is
-available. Rejected credentials trigger the provider's reauthentication flow.
-Sleeping sensors keep their last readings; a transport disconnect is different.
-Missed readings are acceptable; HA does not backfill historical state. ChirpStack’s
-current stream also sends retained events when opened. Timestamp filtering drops
-older events, assuming synchronized HA and ChirpStack clocks. The backend captures
-the cutoff when each device stream opens, minus five seconds, including devices
-discovered later. Remove this workaround once retained delivery can be disabled.
-A server-side live-only option would remove the clock
-assumption. There is no two-second startup filter.
+A disconnect withdraws the server registration and makes its coordinators
+unavailable. The server integration retries its transport setup or starts a
+reauthentication flow. Vendor entries stay loaded. Reconnection reuses existing
+models and reconciles the server’s complete device list.
 
 ## Try the device-library CLI
 
@@ -334,20 +332,12 @@ uv run --no-sync python script/lorawan_poc/check_vendor_examples.py ../lorawan-c
 ```
 
 
-## TTS identity spike
-
-The `lorawan-tts-spike` branch uses the `tts-spike` branch of `lorawan-connection`.
-Use the matching editable library in this development environment:
-
-```sh
-uv pip install --python .venv/bin/python --no-deps -e ../lorawan-connection
-```
+## Stack identities
 
 Discovery registrations are stack and brand pairs, for example
-`"lorawan": [["chirpstack", 744], ["tts", "sensecap"]]`. The HA provider still
-connects to ChirpStack. The separate TTS transport spike lives in the library's
-`script/tts_spike/` directory; this branch tests the shared identity and discovery
-contract, not a TTS config flow.
+`"lorawan": [["chirpstack", 744], ["tts", "sensecap"]]`. This branch implements
+ChirpStack registration. The earlier TTS transport experiment remains in the
+library’s `script/tts_spike/` directory; the TTS HA integration is deferred.
 
 ## Connection registration
 
