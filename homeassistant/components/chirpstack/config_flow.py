@@ -5,7 +5,7 @@ from typing import Any, override
 
 import grpc
 from lorawan_connection import ConnectionUnavailable
-from lorawan_connection.chirpstack import ChirpStackConnection
+from lorawan_connection.backend.chirpstack import ChirpStackConnection
 import probatio
 
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult

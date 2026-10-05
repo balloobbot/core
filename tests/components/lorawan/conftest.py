@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable, Generator
 from unittest.mock import AsyncMock, Mock, patch
 
 from lorawan_connection import DeviceDescriptor, Unsubscribe
-from lorawan_connection.chirpstack import ChirpStackConnection
+from lorawan_connection.backend.chirpstack import ChirpStackConnection
 import pytest
 
 from homeassistant.components.lorawan import async_register_connection

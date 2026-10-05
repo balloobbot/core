@@ -3,7 +3,10 @@
 from dataclasses import dataclass
 
 from lorawan_connection import ConnectionUnavailable, Unsubscribe
-from lorawan_connection.chirpstack import AuthenticationError, ChirpStackConnection
+from lorawan_connection.backend.chirpstack import (
+    AuthenticationError,
+    ChirpStackConnection,
+)
 
 from homeassistant.components import lorawan
 from homeassistant.config_entries import ConfigEntry

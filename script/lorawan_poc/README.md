@@ -84,7 +84,7 @@ retains the device identity without a codec.
 
 - `lorawan-connection[chirpstack]`: common event Protocols, fixture
   dataclasses, and the reusable `DeviceCollection` base.
-- `lorawan_connection.chirpstack`: shared API helpers for the generated gRPC client,
+- `lorawan_connection.backend.chirpstack`: shared API helpers for the generated gRPC client,
   complete inventory polling, individual event streams, and one subscription.
 - `homeassistant/components/sensecap/_vendor/sensecap_lorawan`: S2101 decoding,
   model selection, partial state, and state observers.
@@ -165,12 +165,14 @@ The vendored SenseCAP library passes `SenseCapDeviceCollection.DEVICES` to the s
 
 ```sh
 uv run --no-sync python -m homeassistant.components.sensecap._vendor.sensecap_lorawan \
-  --server https://host:port --api-key-file /path/to/key --tenant TENANT_UUID
+  --backend chirpstack --server https://host:port --api-key-file /path/to/key --tenant TENANT_UUID
 ```
 
 The command watches decoded state. Add `--list` to list devices and exit, or
 `--json` for newline-delimited JSON.
 The helper selects models, builds the collection, and observes state automatically.
+`--backend` selects the adapter. ChirpStack is the default and currently the only
+CLI backend. The helper imports it only when connecting; help needs no backend extra.
 Network operations are async, and key-file reads run in a worker thread.
 Event handling, model notifications, and CLI printing remain synchronous.
 A published vendor library can expose the same command under its package name.
@@ -312,7 +314,7 @@ The generic CLI can also observe the Dragino models:
 
 ```sh
 uv run --no-sync python -m homeassistant.components.dragino._vendor.dragino_lorawan \
-  --server https://host:port --api-key-file /path/to/key --tenant TENANT_UUID --json
+  --backend chirpstack --server https://host:port --api-key-file /path/to/key --tenant TENANT_UUID --json
 ```
 
 Protocol: https://wiki.dragino.com/docs/LoRaWAN-End-Node/io-controllers-sensor-nodes/lt-22222-l/
