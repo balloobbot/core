@@ -370,6 +370,14 @@ class ModelContextProtocolConfigFlow(AbstractOAuth2FlowHandler, domain=DOMAIN):
             **data,
         }
 
+        if self.source != SOURCE_REAUTH:
+            self._async_abort_entries_match(
+                {
+                    CONF_URL: config_entry_data[CONF_URL],
+                    "auth_implementation": config_entry_data["auth_implementation"],
+                }
+            )
+
         async def token_manager() -> str:
             return cast(str, data[CONF_TOKEN][CONF_ACCESS_TOKEN])
 
@@ -389,11 +397,6 @@ class ModelContextProtocolConfigFlow(AbstractOAuth2FlowHandler, domain=DOMAIN):
             return self.async_update_reload_and_abort(
                 self._get_reauth_entry(), data=config_entry_data
             )
-        if self.unique_id is None:
-            # Unique id based on the application credentials OAuth Client ID. A
-            # discovered server keeps the Supervisor uuid instead, so that the
-            # entry is removed together with the app.
-            await self.async_set_unique_id(config_entry_data["auth_implementation"])
         return self.async_create_entry(
             title=info["title"],
             data=config_entry_data,

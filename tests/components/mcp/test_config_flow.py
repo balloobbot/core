@@ -475,6 +475,65 @@ async def test_authentication_flow(
     assert len(mock_setup_entry.mock_calls) == 1
 
 
+@pytest.mark.parametrize(
+    ("url", "expected_result_type", "expected_entries"),
+    [
+        (f"{MCP_SERVER_BASE_URL}/other-mcp", FlowResultType.CREATE_ENTRY, 2),
+        (MCP_SERVER_URL, FlowResultType.ABORT, 1),
+    ],
+    ids=("other_server_same_credentials", "same_server_same_credentials"),
+)
+@pytest.mark.usefixtures("current_request_with_host")
+@respx.mock
+async def test_authentication_flow_existing_credentials(
+    hass: HomeAssistant,
+    mock_setup_entry: AsyncMock,
+    mock_mcp_client: Mock,
+    credential: None,
+    config_entry_with_auth: MockConfigEntry,
+    aioclient_mock: AiohttpClientMocker,
+    hass_client_no_auth: ClientSessionGenerator,
+    url: str,
+    expected_result_type: FlowResultType,
+    expected_entries: int,
+) -> None:
+    """Test adding a server with credentials already used by another entry."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    mock_mcp_client.side_effect = httpx.HTTPStatusError(
+        "Authentication required", request=None, response=httpx.Response(401)
+    )
+    respx.get(url__startswith=f"{MCP_SERVER_BASE_URL}/.well-known/").mock(
+        return_value=OAUTH_SERVER_METADATA_RESPONSE
+    )
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_URL: url}
+    )
+    assert result["type"] is FlowResultType.MENU
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "pick_implementation"}
+    )
+    result = await perform_oauth_flow(
+        hass, aioclient_mock, hass_client_no_auth, result, scopes=SCOPES
+    )
+
+    mock_mcp_client.side_effect = None
+    response = Mock()
+    response.serverInfo.name = TEST_API_NAME
+    mock_mcp_client.return_value.initialize.return_value = response
+
+    result = await hass.config_entries.flow.async_configure(result["flow_id"])
+    assert result["type"] is expected_result_type
+    if expected_result_type is FlowResultType.ABORT:
+        assert result["reason"] == "already_configured"
+
+    entries = hass.config_entries.async_entries(DOMAIN)
+    assert len(entries) == expected_entries
+    assert config_entry_with_auth in entries
+
+
 @pytest.mark.usefixtures("current_request_with_host")
 @respx.mock
 @pytest.mark.parametrize(
