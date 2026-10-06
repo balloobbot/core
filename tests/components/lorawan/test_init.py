@@ -217,3 +217,16 @@ async def test_duplicate_registration(
         )
     assert async_get_connections(hass)[provider_entry.entry_id] is original
     await hass.config_entries.async_unload(provider_entry.entry_id)
+
+
+async def test_registration_failure_closes_transport(
+    hass: HomeAssistant, provider_entry: MockConfigEntry, mock_connection: Mock
+) -> None:
+    """Unexpected registration failures still release the server transport."""
+    with patch(
+        "homeassistant.components.lorawan.async_register_connection",
+        side_effect=RuntimeError("registration failed"),
+    ):
+        assert not await hass.config_entries.async_setup(provider_entry.entry_id)
+    mock_connection.close.assert_awaited_once()
+    assert provider_entry.entry_id not in async_get_connections(hass)

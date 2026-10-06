@@ -1,10 +1,8 @@
 """Dragino device models consuming shared LoRaWAN events."""
 
-# This vendored library is framework-neutral.
-
 from datetime import datetime
 import logging
-from typing import cast, override
+from typing import override
 
 from lorawan_connection import (
     Device,
@@ -12,7 +10,6 @@ from lorawan_connection import (
     DeviceDescriptor,
     DeviceEvent,
     EventType,
-    Uplink,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -42,11 +39,10 @@ class LT22222(Device):
 
     @override
     def handle_event(self, event: DeviceEvent) -> None:
-        if self.closed or event.type != EventType.UPLINK or event.data is None:
+        if self.closed or event.type != EventType.UPLINK:
             return
-        uplink = cast(Uplink, event.data)
-        data = uplink.data
-        if uplink.f_port != 2 or len(data) != 11:
+        data = event.data
+        if event.f_port != 2 or len(data) != 11:
             return
         # Trigger reports contain flags, not input measurements or output states.
         if not 1 <= (data[10] & 0x3F) <= 5:

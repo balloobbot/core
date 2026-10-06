@@ -8,12 +8,15 @@ from unittest.mock import AsyncMock, Mock, patch
 import weakref
 
 from lorawan_connection import (
-    AckData,
+    AckEvent,
+    AddedEvent,
     DeviceDescriptor,
-    DeviceEventData,
+    DeviceEvent,
     DownlinkError,
     EventType,
-    UplinkData,
+    RemovedEvent,
+    UpdatedEvent,
+    UplinkEvent,
 )
 import pytest
 from syrupy.assertion import SnapshotAssertion
@@ -40,11 +43,13 @@ DESCRIPTOR = DeviceDescriptor(
 )
 
 
-def inventory(kind: EventType = EventType.ADDED) -> DeviceEventData:
+def inventory(kind: EventType = EventType.ADDED) -> DeviceEvent:
     """Build a catalog inventory event."""
-    return DeviceEventData(
-        type=kind, received_at=dt_util.utcnow(), descriptor=DESCRIPTOR
-    )
+    return {
+        EventType.ADDED: AddedEvent,
+        EventType.UPDATED: UpdatedEvent,
+        EventType.REMOVED: RemovedEvent,
+    }[kind](received_at=dt_util.utcnow(), descriptor=DESCRIPTOR)
 
 
 @pytest.fixture
@@ -70,12 +75,12 @@ async def setup_dragino(
 
     async def send(downlink: object) -> str:
         emit(
-            DeviceEventData(
+            AckEvent(
                 network_id="network",
                 dev_eui=DESCRIPTOR.dev_eui,
-                type=EventType.ACK,
                 received_at=dt_util.utcnow(),
-                data=AckData("queue-id", True),
+                queue_item_id="queue-id",
+                acknowledged=True,
             )
         )
         return "queue-id"
@@ -95,12 +100,12 @@ async def test_relay_cycle(
     _, emit = setup_dragino
     assert hass.states.get("switch.workshop_relay_1").state == "unknown"
     assert hass.states.get("switch.workshop_relay_2").state == "unknown"
-    report = DeviceEventData(
+    report = UplinkEvent(
         network_id="network",
         dev_eui=DESCRIPTOR.dev_eui,
-        type=EventType.UPLINK,
         received_at=dt_util.utcnow(),
-        data=UplinkData(bytes(10) + b"\x41", 2),
+        data=bytes(10) + b"\x41",
+        f_port=2,
     )
     emit(report)
     await hass.async_block_till_done(wait_background_tasks=True)
@@ -113,7 +118,7 @@ async def test_relay_cycle(
     assert request.data == bytes.fromhex("030111")
     assert request.confirmed
     assert hass.states.get("switch.workshop_relay_1").state == "off"
-    emit(replace(report, data=UplinkData(bytes(8) + bytes((0x80, 0, 0x41)), 2)))
+    emit(replace(report, data=bytes(8) + bytes((0x80, 0, 0x41)), f_port=2))
     await hass.async_block_till_done(wait_background_tasks=True)
     assert hass.states.get("switch.workshop_relay_1").state == "on"
     assert hass.states.get("switch.workshop_relay_2").state == "off"
@@ -179,23 +184,23 @@ async def test_command_waits_for_ack(
     await sent.wait()
     assert not command.done()
     emit(
-        DeviceEventData(
+        UplinkEvent(
             network_id="network",
             dev_eui=DESCRIPTOR.dev_eui,
-            type=EventType.UPLINK,
             received_at=dt_util.utcnow(),
-            data=UplinkData(bytes(8) + bytes((0x80, 0, 0x41)), 2),
+            data=bytes(8) + bytes((0x80, 0, 0x41)),
+            f_port=2,
         )
     )
     assert hass.states.get("switch.workshop_relay_1").state == "on"
     assert not command.done()
     emit(
-        DeviceEventData(
+        AckEvent(
             network_id="network",
             dev_eui=DESCRIPTOR.dev_eui,
-            type=EventType.ACK,
             received_at=dt_util.utcnow(),
-            data=AckData("queue-id", True),
+            queue_item_id="queue-id",
+            acknowledged=True,
         )
     )
     await command
@@ -211,12 +216,12 @@ async def test_command_negative_ack(
 
     async def send(downlink: object) -> str:
         emit(
-            DeviceEventData(
+            AckEvent(
                 network_id="network",
                 dev_eui=DESCRIPTOR.dev_eui,
-                type=EventType.ACK,
                 received_at=dt_util.utcnow(),
-                data=AckData("queue-id", False),
+                queue_item_id="queue-id",
+                acknowledged=False,
             )
         )
         return "queue-id"
@@ -253,9 +258,9 @@ async def test_removed_while_entities_are_added(
     _, emit = setup_dragino
     original_entities = set(hass.states.async_entity_ids())
     descriptor = replace(DESCRIPTOR, dev_eui="0201010101010103", name="Second")
-    added = replace(inventory(), dev_eui=descriptor.dev_eui, descriptor=descriptor)
+    added = replace(inventory(), descriptor=descriptor)
     emit(added)
-    emit(replace(added, type=EventType.REMOVED))
+    emit(RemovedEvent(descriptor=added.descriptor, received_at=added.received_at))
     await hass.async_block_till_done(wait_background_tasks=True)
     assert set(hass.states.async_entity_ids()) == original_entities
 
@@ -278,15 +283,15 @@ async def test_input_entities(
 ) -> None:
     """All channels map correctly and mode changes clear inapplicable readings."""
     _, emit = setup_dragino
-    report = DeviceEventData(
+    report = UplinkEvent(
         network_id="network",
         dev_eui=DESCRIPTOR.dev_eui,
-        type=EventType.UPLINK,
         received_at=dt_util.utcnow(),
-        data=UplinkData(bytes.fromhex("04ab04ac13101300df0041"), 2),
+        data=bytes.fromhex("04ab04ac13101300df0041"),
+        f_port=2,
     )
     emit(report)
-    emit(replace(report, data=UplinkData(bytes.fromhex(payload), 2)))
+    emit(replace(report, data=bytes.fromhex(payload), f_port=2))
     await hass.async_block_till_done(wait_background_tasks=True)
     assert {
         state.entity_id: {"state": state.state, "attributes": dict(state.attributes)}
@@ -363,12 +368,12 @@ async def test_digital_output_commands(
     assert request.data.hex() == payload
     assert hass.states.get(entity_id).state == "unknown"
     emit(
-        DeviceEventData(
+        UplinkEvent(
             network_id="network",
             dev_eui=DESCRIPTOR.dev_eui,
-            type=EventType.UPLINK,
             received_at=dt_util.utcnow(),
-            data=UplinkData(bytes(8) + bytes((report, 0, 0x41)), 2),
+            data=bytes(8) + bytes((report, 0, 0x41)),
+            f_port=2,
         )
     )
     assert hass.states.get(entity_id).state == expected

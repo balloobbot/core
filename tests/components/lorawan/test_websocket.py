@@ -4,7 +4,7 @@ from asyncio import Event
 from dataclasses import replace
 from unittest.mock import Mock, patch
 
-from lorawan_connection import DeviceDescriptor, DeviceEventData, EventType
+from lorawan_connection import DeviceDescriptor, UpdatedEvent
 import pytest
 
 from homeassistant.core import HomeAssistant
@@ -191,9 +191,7 @@ async def test_support_changes_with_profile(
     assert result["result"]["devices"][0]["unsupported_reason"] == "no_catalog_identity"
     mock_connection.devices[DESCRIPTOR.dev_eui] = DESCRIPTOR
     mock_connection._emit(
-        DeviceEventData(
-            type=EventType.UPDATED, received_at=dt_util.utcnow(), descriptor=DESCRIPTOR
-        )
+        UpdatedEvent(received_at=dt_util.utcnow(), descriptor=DESCRIPTOR)
     )
     await client.send_json({"id": 2, **request})
     result = await client.receive_json()

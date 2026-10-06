@@ -690,6 +690,8 @@ homeassistant.components.zone.*
 homeassistant.components.zonneplan.*
 homeassistant.components.zwave_js.*
 
+homeassistant.components.chirpstack.*
 homeassistant.components.dragino.*
 homeassistant.components.lorawan.*
 homeassistant.components.sensecap.*
+homeassistant.components.the_things_stack.*

@@ -2,15 +2,28 @@
 
 import asyncio
 from dataclasses import replace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
-from lorawan_connection import ConnectionUnavailable, DownlinkError
+from lorawan_connection import (
+    ConnectionUnavailable,
+    Downlink,
+    DownlinkError,
+    EventType,
+    UplinkEvent,
+)
 import pytest
 
-from homeassistant.components.lorawan import async_get_connections
+from homeassistant.components.lorawan import DeviceManager, async_get_connections
+from homeassistant.components.lorawan.device_manager import _CollectionConnection
+from homeassistant.components.sensecap import (
+    SenseCapCoordinator,
+    SenseCapDeviceCollection,
+)
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.util import dt as dt_util
 
 from .conftest import RegisterBackend
 from .test_libraries import DESCRIPTOR, inventory
@@ -148,7 +161,7 @@ async def test_startup_cleanup(
 
 
 async def test_coordinator_listener_cleanup(
-    hass: HomeAssistant, registered_backend
+    hass: HomeAssistant, registered_backend: RegisterBackend
 ) -> None:
     """Subscriptions replay ready coordinators and unsubscribe independently."""
     backend, _ = await registered_backend("network", [DESCRIPTOR])
@@ -219,3 +232,143 @@ async def test_pending_command_fails_on_disconnect(
             await command
     assert not device.closed
     await hass.config_entries.async_unload(entry.entry_id)
+
+
+@pytest.mark.parametrize(
+    "error", [RuntimeError("setup failed"), asyncio.CancelledError()]
+)
+async def test_collection_setup_failure_cleanup(
+    hass: HomeAssistant, registered_backend: RegisterBackend, error: BaseException
+) -> None:
+    """Failed or cancelled collection setup releases subscriptions and models."""
+
+    await registered_backend("network", [DESCRIPTOR])
+    entry = MockConfigEntry(domain="sensecap")
+    entry.add_to_hass(hass)
+    manager = DeviceManager(
+        hass,
+        entry,
+        create_collection=SenseCapDeviceCollection,
+        create_coordinator=SenseCapCoordinator,
+    )
+    with (
+        patch.object(SenseCapDeviceCollection, "async_setup", side_effect=error),
+        pytest.raises(type(error)),
+    ):
+        await manager.async_setup()
+    assert not manager.coordinators
+    assert not manager._sessions
+    manager.close()
+    with pytest.raises(RuntimeError, match="closed"):
+        await manager.async_setup()
+
+
+async def test_coordinator_creation_failure(
+    hass: HomeAssistant, registered_backend: RegisterBackend
+) -> None:
+    """A failed coordinator cannot leave a partially loaded vendor integration."""
+
+    await registered_backend("network", [DESCRIPTOR])
+    entry = MockConfigEntry(domain="sensecap")
+    entry.add_to_hass(hass)
+    manager = DeviceManager(
+        hass,
+        entry,
+        create_collection=SenseCapDeviceCollection,
+        create_coordinator=Mock(side_effect=ValueError("coordinator failed")),
+    )
+    with pytest.raises(HomeAssistantError, match="coordinator"):
+        await manager.async_setup()
+    assert not manager.coordinators
+    assert not manager._sessions
+
+
+async def test_listener_replay_failure_unsubscribes(
+    hass: HomeAssistant, registered_backend: RegisterBackend
+) -> None:
+    """An observer that fails during initial replay is not retained."""
+
+    backend, _ = await registered_backend("network", [DESCRIPTOR])
+    entry = MockConfigEntry(domain="sensecap")
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    listener = Mock(side_effect=RuntimeError("observer failed"))
+    with pytest.raises(RuntimeError, match="observer failed"):
+        entry.runtime_data.subscribe_coordinator_added(listener)
+    backend._emit(inventory(replace(DESCRIPTOR, dev_eui="0201010101010102")))
+    listener.assert_called_once()
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_disconnect_during_collection_setup(
+    hass: HomeAssistant, registered_backend: RegisterBackend
+) -> None:
+    """Withdrawal during setup retains the model for a later connection."""
+
+    _, unregister = await registered_backend("network", [DESCRIPTOR])
+    entry = MockConfigEntry(domain="sensecap")
+    entry.add_to_hass(hass)
+    manager = DeviceManager(
+        hass,
+        entry,
+        create_collection=SenseCapDeviceCollection,
+        create_coordinator=SenseCapCoordinator,
+    )
+    setup = SenseCapDeviceCollection.async_setup
+
+    async def setup_and_disconnect(collection: SenseCapDeviceCollection) -> None:
+        await setup(collection)
+        unregister()
+
+    with patch.object(
+        SenseCapDeviceCollection, "async_setup", new=setup_and_disconnect
+    ):
+        await manager.async_setup()
+    assert not manager.coordinators[("network", DESCRIPTOR.dev_eui)].last_update_success
+    manager.close()
+    await hass.async_block_till_done()
+
+
+async def test_vendor_change_removes_old_model(
+    hass: HomeAssistant, registered_backend: RegisterBackend
+) -> None:
+    """Changing the catalog vendor retires the model without leaking events."""
+
+    backend, _ = await registered_backend("network", [DESCRIPTOR])
+    entry = MockConfigEntry(domain="sensecap")
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    backend._emit(
+        inventory(replace(DESCRIPTOR, brand_id=676), EventType.UPDATED), DESCRIPTOR
+    )
+    await hass.async_block_till_done()
+    assert not entry.runtime_data.coordinators
+    assert hass.states.get("sensor.greenhouse_temperature") is None
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_collection_connection_filter_and_disconnect() -> None:
+    """The retained transport filters replay and rejects commands while detached."""
+
+    connection = _CollectionConnection()
+    # Ignore activity without a descriptor until inventory identifies the device.
+    connection.emit(
+        UplinkEvent(
+            network_id="network",
+            dev_eui=DESCRIPTOR.dev_eui,
+            received_at=dt_util.utcnow(),
+            data=b"unknown",
+        )
+    )
+    connection.emit(inventory(DESCRIPTOR))
+    listener = Mock()
+    unsubscribe = await connection.async_subscribe(
+        brands=frozenset({("tts", "sensecap")}), callback=listener
+    )
+    listener.assert_not_called()
+    unsubscribe()
+    unsubscribe()
+    with pytest.raises(DownlinkError, match="unavailable"):
+        await connection.async_send_downlink(
+            Downlink(DESCRIPTOR.dev_eui, 1, b"command")
+        )

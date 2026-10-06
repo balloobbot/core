@@ -97,3 +97,28 @@ async def test_shutdown(
     assert provider_entry.entry_id not in async_get_connections(hass)
     mock_connection.close.assert_awaited_once()
     reload.assert_not_called()
+
+
+async def test_registration_failure_closes_transport(
+    hass: HomeAssistant, provider_entry: MockConfigEntry, mock_connection: TTSConnection
+) -> None:
+    """Unexpected registration failures still release the server transport."""
+    with patch(
+        "homeassistant.components.lorawan.async_register_connection",
+        side_effect=RuntimeError("registration failed"),
+    ):
+        assert not await hass.config_entries.async_setup(provider_entry.entry_id)
+    mock_connection.close.assert_awaited_once()
+    assert provider_entry.entry_id not in async_get_connections(hass)
+
+
+async def test_disconnect_during_shutdown(
+    hass: HomeAssistant, provider_entry: MockConfigEntry, mock_connection: TTSConnection
+) -> None:
+    """A dropped connection during shutdown does not start recovery."""
+    assert await hass.config_entries.async_setup(provider_entry.entry_id)
+    hass.set_state(CoreState.stopping)
+    with patch.object(hass.config_entries, "async_schedule_reload") as reload:
+        mock_connection._failed(ConnectionUnavailable())
+    reload.assert_not_called()
+    await hass.config_entries.async_unload(provider_entry.entry_id)

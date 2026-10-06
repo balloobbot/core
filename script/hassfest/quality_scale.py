@@ -2008,6 +2008,7 @@ NO_QUALITY_SCALE = [
     "llm",
     "logbook",
     "logger",
+    "lorawan",
     "lovelace",
     "map_tiles",
     "media_source",

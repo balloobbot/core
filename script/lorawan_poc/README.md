@@ -22,13 +22,24 @@ The [implementation findings](https://gisthost.github.io/?c66c965ba7be32f9b0b64f
 and [run instructions](https://gisthost.github.io/?c66c965ba7be32f9b0b64ff5c0ce0241#running)
 are also available on the proposal website.
 
+## Library version
+
+This branch requires the typed event API in `lorawan-connection` 0.11.0.
+That release is pending. Until publication, install a locally built 0.11.0 wheel
+into this worktree's virtual environment. The installation command below applies
+after the release is published.
+
+Server manifests list their backend dependencies explicitly. The shared LoRaWAN
+integration installs the base library; HA does not check optional extras when
+that distribution is already installed.
+
 ## Try it in Home Assistant
 
 1. Run `script/setup` in this worktree. For the tests and CLI examples, install
    the published library with both backend extras:
 
    ```sh
-   uv pip install --python .venv/bin/python 'lorawan-connection[chirpstack,tts]==0.10.0'
+   uv pip install --python .venv/bin/python 'lorawan-connection[chirpstack,tts]==0.11.0'
    ```
 
    Start HA with a fresh configuration:
@@ -360,3 +371,14 @@ uv run --no-sync python -m homeassistant.components.sensecap._vendor.sensecap_lo
   --identity-server https://identity-server:8884 --application my-app \
   --api-key-file /path/to/application-key --json
 ```
+
+## Quality status
+
+LoRaWAN is an internal integration. The server and vendor integrations retain
+quality checklists for their applicable requirements. They do not claim a tier
+while branding, HA documentation, and vendor package distribution remain pending.
+Reconfiguration, diagnostics, and repairs are deferred beyond this PoC.
+
+Server config-flow and setup tests cover credential retry and transport cleanup.
+Device-manager tests cover failed attachment, lost connections, vendor changes,
+and listener cleanup. SenseCAP and Dragino packages remain vendored for this PoC.

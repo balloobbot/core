@@ -7,17 +7,19 @@ import logging
 from typing import Any
 
 from lorawan_connection import (
+    AddedEvent,
     Connection,
     ConnectionUnavailable,
     Device,
     DeviceCollection,
     DeviceDescriptor,
     DeviceEvent,
-    DeviceEventData,
     Downlink,
     DownlinkError,
     EventType,
+    RemovedEvent,
     Unsubscribe,
+    UpdatedEvent,
     notify,
     subscribe,
 )
@@ -95,10 +97,15 @@ class _CollectionConnection:
             self.emit(self._event(EventType.ADDED, descriptor))
 
     @staticmethod
-    def _event(kind: EventType, descriptor: DeviceDescriptor) -> DeviceEventData:
-        return DeviceEventData(
-            type=kind, descriptor=descriptor, received_at=dt_util.utcnow()
-        )
+    def _event(kind: EventType, descriptor: DeviceDescriptor) -> DeviceEvent:
+        event_classes: dict[
+            EventType, type[AddedEvent | UpdatedEvent | RemovedEvent]
+        ] = {
+            EventType.ADDED: AddedEvent,
+            EventType.UPDATED: UpdatedEvent,
+            EventType.REMOVED: RemovedEvent,
+        }
+        return event_classes[kind](descriptor=descriptor, received_at=dt_util.utcnow())
 
     def emit(self, event: DeviceEvent) -> None:
         previous = self._devices.get(event.dev_eui)

@@ -8,7 +8,7 @@ import gc
 from unittest.mock import patch
 import weakref
 
-from lorawan_connection import DeviceEventData, EventType, UplinkData
+from lorawan_connection import EventType, UplinkEvent
 
 from homeassistant.config_entries import SOURCE_INTEGRATION_DISCOVERY, ConfigEntryState
 from homeassistant.core import HomeAssistant
@@ -37,12 +37,11 @@ async def test_sensor_lifecycle(
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
         assert hass.states.get("sensor.greenhouse_temperature").state == "unknown"
-        event = DeviceEventData(
+        event = UplinkEvent(
             network_id="network",
             dev_eui=DESCRIPTOR.dev_eui,
-            type=EventType.UPLINK,
             received_at=dt_util.utcnow(),
-            data=UplinkData(PAYLOAD),
+            data=PAYLOAD,
         )
         connection._emit(event)
         await hass.async_block_till_done()

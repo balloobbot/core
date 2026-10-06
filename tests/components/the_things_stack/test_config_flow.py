@@ -107,3 +107,37 @@ async def test_reauth(
     assert provider_entry.entry_id == "tts-server"
     await hass.async_block_till_done(wait_background_tasks=True)
     await hass.config_entries.async_unload(provider_entry.entry_id)
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        pytest.param(AuthenticationError(), "invalid_auth", id="authentication"),
+        pytest.param(ConnectionUnavailable(), "cannot_connect", id="connection"),
+    ],
+)
+async def test_reauth_error_recovery(
+    hass: HomeAssistant,
+    mock_connection: TTSConnection,
+    provider_entry: MockConfigEntry,
+    error: Exception,
+    expected: str,
+) -> None:
+    """A failed replacement key leaves credentials intact and allows retry."""
+    result = await provider_entry.start_reauth_flow(hass)
+    mock_connection.async_connect.side_effect = error
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"api_key": "bad"}
+    )
+    assert result["errors"] == {"base": expected}
+    assert provider_entry.data["api_key"] == "secret"
+    mock_connection.async_connect.side_effect = None
+    with patch(
+        "homeassistant.config_entries.ConfigEntries.async_reload", return_value=True
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"api_key": "replacement"}
+        )
+        await hass.async_block_till_done()
+    assert result["reason"] == "reauth_successful"
+    assert provider_entry.data["api_key"] == "replacement"
