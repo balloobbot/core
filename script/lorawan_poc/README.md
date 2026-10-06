@@ -340,7 +340,7 @@ uv run --no-sync python script/lorawan_poc/check_vendor_examples.py ../lorawan-c
 
 Follow the [backend author guide](https://home-assistant-libs.github.io/lorawan-connection/connection/adding-a-backend/)
 to implement inventory, events, commands, optional dependencies, and CLI selection.
-Then use [Add a server integration](https://home-assistant-libs.github.io/lorawan-connection/home-assistant/server-integration/)
+Then use [Connection providers](https://home-assistant-libs.github.io/lorawan-connection/home-assistant/connection-providers/)
 for the HA manifest, config flow, registration, recovery, and cleanup. Add the new
 stack's native identities to vendor libraries and discovery manifests. Vendor
 `DeviceManager` setup continues to use all matching connections.
