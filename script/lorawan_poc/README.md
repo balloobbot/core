@@ -1,17 +1,15 @@
 # LoRaWAN proof of concept
 
-This POC uses published `lorawan-connection==0.10.0`, including the optional
-ChirpStack and The Things Stack backends. The integration manifests pin the
-released package; no editable library checkout is required.
+The PoC uses `lorawan-connection==0.10.0` from PyPI with its ChirpStack and
+The Things Stack backends.
 
-Use a fresh HA test configuration for this branch. It replaces the old LoRaWAN
-server entry with ChirpStack entries and uses each server entry ID as the device
-identity namespace. Migration from the earlier experimental branch is not included.
+Use a fresh HA test configuration. This branch does not migrate entries from
+the earlier PoC.
 
-This worktree adds `chirpstack`, `the_things_stack`, `lorawan`, `sensecap`, and `dragino` integrations. It connects to an
-existing ChirpStack 4.19 or TTS 3.36 server and discovers provisioned devices. The first
-SenseCAP model is S2101, with temperature and humidity sensors. Provisioning,
-BLE, gateway setup, a managed HA app, and a custom frontend are later phases.
+The `chirpstack` and `the_things_stack` integrations connect to existing servers.
+The shared `lorawan` integration discovers devices for `sensecap` and `dragino`.
+Provision devices on ChirpStack 4.19 or TTS 3.36 before connecting. BLE provisioning,
+gateway setup, a managed HA app, and a custom frontend are future work.
 
 ## Get the POC branch
 
@@ -33,7 +31,6 @@ are also available on the proposal website.
    uv pip install --python .venv/bin/python 'lorawan-connection[chirpstack,tts]==0.10.0'
    ```
 
-   During normal setup, each server integration installs its required extra.
    Start HA with a fresh configuration:
 
    ```sh
@@ -52,9 +49,8 @@ are also available on the proposal website.
    keys require their tenant UUID. ChirpStack reports insufficient listing scope
    as UNAUTHENTICATED, so the flow validates the key after selecting a tenant. Full-access and read-only keys both work.
 6. Confirm the discovered SenseCAP or Dragino integration. Each vendor has one
-   entry covering supported devices across all registered servers. There is no
-   connection picker. Application selection in the server integration defines scope.
-   Vendor setup can run before servers connect; new registrations are picked up automatically.
+   entry covering supported devices across all registered servers. Application
+   selection in each server integration defines which devices appear.
 
 The admin-only `lorawan/devices/list` websocket command takes `entry_id` and returns
 current descriptors and availability. Each descriptor includes `unsupported_reason`:
@@ -69,8 +65,7 @@ current descriptors and availability. Each descriptor includes `unsupported_reas
 Vendor integrations declare their IDs in `manifest.json` and expose their library’s
 model classes in a `lorawan.py` platform. Support reporting uses those declarations.
 
-Missing catalog identity takes precedence. The endpoint exposes no credentials. The regular HA
-integration/device/entity pages show the provider, collection, and sensors.
+Missing catalog identity takes precedence. The endpoint exposes no credentials.
 
 Catalog entries do not require an encoder or decoder. The catalog's device
 identity and radio profiles are enough for mapping; our Python libraries decode
@@ -94,22 +89,15 @@ retains the device identity without a codec.
   `tests/components/lorawan`, `tests/components/sensecap`, and
   `tests/components/dragino`: isolated tests.
 
-The shared LoRaWAN library is published as version 0.10.0. The SenseCAP and Dragino libraries remain
-vendored under temporary Core namespaces; they use no HA APIs and import
-`lorawan_connection` directly. ChirpStack API helpers ship in the optional shared-library backend. Generated ChirpStack bindings,
-gRPC, and protobuf remain ordinary dependencies. No JavaScript decoder runs in
-HA. The native decoder follows Seeed's seven-byte record layout and the catalog
-fixture. It validates length and S2101 ranges, but does not validate the two-byte
-trailer: the reference decoder's CRC routine is a stub.
+The SenseCAP and Dragino libraries are vendored temporarily and use no HA APIs.
+The S2101 decoder validates record lengths and measurement ranges. It does not
+validate the two-byte trailer because the reference decoder’s CRC routine is a stub.
 
 ## Library author pattern
 
-Subclass `Device` for each model and declare `identifiers`, a mapping from stack
-to `(brand_id, model_id)`. Declare supported classes in `DeviceCollection.DEVICES`; the
-collection builds its lookup and creates or retires models automatically. Models
-update their own attributes and call `notify()`. Consumers use `add_update_listener()`
-with callbacks that read those attributes. Override `_create_device()` only for special
-matching rules.
+Declare model identities in `Device.identifiers` and supported classes in
+`DeviceCollection.DEVICES`. Models decode events, update attributes, and call
+`notify()`. In HA, pass the collection and coordinator factories to `DeviceManager`:
 
 ```python
 manager = entry.runtime_data = lorawan.DeviceManager(
@@ -122,43 +110,13 @@ entry.async_on_unload(manager.close)
 await manager.async_setup()
 ```
 
-The HA device manager creates one ordinary `DataUpdateCoordinator` per device and
-owns its lifetime. Platforms use `manager.subscribe_coordinator_added(callback)`
-to receive ready coordinators for existing and new devices. All platforms share
-the same coordinator for a device. Its `device_info` uses
-`lorawan.device_identifier(DOMAIN, device)`; entities return that information.
-The manager uses the same identity for registry cleanup without inspecting metadata.
+The manager creates one coordinator per device. Platforms receive current and
+future coordinators through `subscribe_coordinator_added()`. Use
+`device_identifier()` for registry identity and `LoRaWANEntity` for entities.
 
-The manager removes registry records on live device removal and reconciles removals
-that happened while HA was offline after successful setup. It updates registered
-device names when descriptors change. Ordinary unload and failed setup preserve
-registry records. Entities inherit `lorawan.LoRaWANEntity`, which handles model
-updates and late entity additions. Closing the manager closes its collections and
-retires coordinators, leaving the shared connection open.
-
-Call `manager.async_setup()` without a server selection. The manager creates
-collections for current connections and attaches connections registered later.
-Decoding, FPorts, state merging, and unsupported data stay in the vendor library.
-`test_libraries.py` is a runnable fixture example; `test_device_manager.py` exercises
-the shared lifecycle across connections.
-
-Events are borrowed, read-only Protocols. `DeviceEventData` is a small envelope;
-its payload is the original generated protobuf object, not a reconstructed
-nested dataclass. Fixture `UplinkData` and `StatusData` implement the same
-contracts. Dispatch using `EventType`, not runtime Protocol checks. Only the
-backend and provider config flow import ChirpStack bindings.
-
-Existing devices are delivered before `devices.async_setup()` returns. The adapter
-polls every 30 seconds, commits only complete snapshots, and refreshes inventory
-before delivering activity for an unknown device. Current per-device streams
-usually mean polling discovers a new device first. Unsubscribe stops callback
-delivery; the transport owner must await `close()` to release the connection.
-Callbacks are synchronous and must not block.
-
-A disconnect withdraws the server registration and makes its coordinators
-unavailable. The server integration retries its transport setup or starts a
-reauthentication flow. Vendor entries stay loaded. Reconnection reuses existing
-models and reconciles the server’s complete device list.
+The [device implementation guide](https://home-assistant-libs.github.io/lorawan-connection/home-assistant/device-implementations/)
+covers entity setup and lifecycle. `test_libraries.py` shows event fixtures;
+`test_device_manager.py` covers multiple connections, recovery, and removal.
 
 ## Try the device-library CLI
 
@@ -169,13 +127,10 @@ uv run --no-sync python -m homeassistant.components.sensecap._vendor.sensecap_lo
   --backend chirpstack --server https://host:port --api-key-file /path/to/key --tenant TENANT_UUID
 ```
 
-The command watches decoded state. Add `--list` to list devices and exit, or
-`--json` for newline-delimited JSON.
-The helper selects models, builds the collection, and observes state automatically.
-`--backend` selects the adapter. ChirpStack is the default; `tts` selects The Things Stack. The helper imports it only when connecting; help needs no backend extra.
-Network operations are async, and key-file reads run in a worker thread.
-Event handling, model notifications, and CLI printing remain synchronous.
-A published vendor library can expose the same command under its package name.
+The command watches decoded state. Add `--list` for inventory or `--json` for
+newline-delimited JSON. Select `--backend chirpstack` (the default) or `--backend tts`.
+Help works without backend extras. A published vendor library can expose the
+same command under its package name.
 
 ## Tests
 
@@ -261,19 +216,14 @@ Never commit API keys, database files, or runtime logs.
 
 ## Before an upstream integration submission
 
-This is a POC, not a claimed Bronze-quality contribution. `quality_scale.yaml`
-records remaining distribution/documentation work as `todo`. Full Hassfest
-currently rejects that incomplete quality tier. The manifests pin the published
-library, including both optional backends.
-Publish the SenseCAP and Dragino libraries, add official integration documentation and brands, review
-the vendor-discovery registration mechanism, and test actual SenseCAP hardware
-before an upstream contribution.
+Hassfest rejects the incomplete Bronze quality tier. Before submission, publish
+the SenseCAP and Dragino libraries, add official documentation and brands, review
+the discovery mechanism, and test physical devices. `quality_scale.yaml` records
+unfinished requirements as `todo`.
 
 ## Dragino example
 
-The Dragino LT-22222-L is available from Seeed. It uses the separate Dragino
-integration. It already appears in the
-upstream ChirpStack catalog; no local catalog entry is needed.
+The Dragino LT-22222-L uses the Dragino integration and its upstream catalog entry.
 
 1. Provision an LT-22222-L in ChirpStack using its global **Class C** profile for
    the device's region. Configure the hardware for Class C and working mode 1–5.
@@ -342,8 +292,7 @@ Follow the [backend author guide](https://home-assistant-libs.github.io/lorawan-
 to implement inventory, events, commands, optional dependencies, and CLI selection.
 Then use [Connection providers](https://home-assistant-libs.github.io/lorawan-connection/home-assistant/connection-providers/)
 for the HA manifest, config flow, registration, recovery, and cleanup. Add the new
-stack's native identities to vendor libraries and discovery manifests. Vendor
-`DeviceManager` setup continues to use all matching connections.
+stack's native identities to vendor libraries and discovery manifests. Vendor integrations use the new connections through `DeviceManager`.
 
 ## Stack identities
 
@@ -378,8 +327,7 @@ for TLS or explicit `http://host:port` for a disposable local server.
 
 The key needs device-read and traffic-read rights for every selected application.
 Traffic-down-write enables commands. The integration validates access, registers
-its backend with LoRaWAN, and owns recovery and reauthentication. The existing
-SenseCAP and Dragino entries attach automatically; no connection picker is needed.
+its backend with LoRaWAN, and owns recovery and reauthentication. Existing SenseCAP and Dragino entries attach automatically.
 
 The TTS backend reads catalog identity from each device's `version_ids`. An S2101
 uses `sensecap` / `sensecaps2101-temp-humid`. Devices need a DevEUI. The backend
@@ -412,6 +360,3 @@ uv run --no-sync python -m homeassistant.components.sensecap._vendor.sensecap_lo
   --identity-server https://identity-server:8884 --application my-app \
   --api-key-file /path/to/application-key --json
 ```
-
-ChirpStack and TTS may be configured together. A server outage affects only its
-own devices; reconnection preserves the vendor manager and existing models.
