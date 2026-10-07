@@ -274,7 +274,8 @@ async def test_real_stack(hass: HomeAssistant) -> None:
         async with asyncio.timeout(10):
             state = json.loads(await cli.stdout.readline())
         assert state["type"] == "state"
-        assert state["state"] == {"temperature": 21.4, "humidity": 31.4}
+        assert state["state"]["temperature"] == 21.4
+        assert state["state"]["humidity"] == 31.4
         print(
             "PASS: generic model-list CLI discovers S2101 and prints decoded live state"
         )

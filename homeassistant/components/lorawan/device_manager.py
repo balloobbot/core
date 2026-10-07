@@ -54,20 +54,22 @@ class _CollectionConnection:
         self.registration: RegisteredConnection | None = None
         self._devices: dict[str, DeviceDescriptor] = {}
         self._listeners: list[
-            tuple[frozenset[tuple[str, int | str]], Callable[[DeviceEvent], None]]
+            tuple[
+                frozenset[tuple[str, int | str]] | None, Callable[[DeviceEvent], None]
+            ]
         ] = []
         self._disconnect: list[Callable[[None], None]] = []
 
     async def async_subscribe(
         self,
         *,
-        brands: frozenset[tuple[str, int | str]],
+        brands: frozenset[tuple[str, int | str]] | None,
         callback: Callable[[DeviceEvent], None],
     ) -> Unsubscribe:
         item = (brands, callback)
         self._listeners.append(item)
         for descriptor in tuple(self._devices.values()):
-            if (descriptor.stack, descriptor.brand_id) in brands:
+            if brands is None or (descriptor.stack, descriptor.brand_id) in brands:
                 callback(self._event(EventType.ADDED, descriptor))
 
         def unsubscribe() -> None:
@@ -90,10 +92,11 @@ class _CollectionConnection:
 
     def attach(self, registration: RegisteredConnection) -> None:
         self.registration = registration
+        devices = registration.devices
         for eui, descriptor in tuple(self._devices.items()):
-            if eui not in registration.devices:
+            if eui not in devices:
                 self.emit(self._event(EventType.REMOVED, descriptor))
-        for descriptor in tuple(registration.devices.values()):
+        for descriptor in devices.values():
             self.emit(self._event(EventType.ADDED, descriptor))
 
     @staticmethod
@@ -117,7 +120,7 @@ class _CollectionConnection:
         else:
             self._devices[event.dev_eui] = descriptor
         for brands, listener in tuple(self._listeners):
-            if (descriptor.stack, descriptor.brand_id) in brands:
+            if brands is None or (descriptor.stack, descriptor.brand_id) in brands:
                 notify([listener], event)
             elif previous and (previous.stack, previous.brand_id) in brands:
                 notify([listener], self._event(EventType.REMOVED, previous))

@@ -7,6 +7,8 @@ from typing import Protocol, override
 from lorawan_connection import (
     Connection,
     ConnectionUnavailable,
+    Device,
+    DeviceCollection,
     DeviceDescriptor,
     DeviceEvent,
     Downlink,
@@ -45,7 +47,7 @@ class _ConsumerConnection:
     async def async_subscribe(
         self,
         *,
-        brands: frozenset[tuple[str, int | str]],
+        brands: frozenset[tuple[str, int | str]] | None,
         callback: Callable[[DeviceEvent], None],
     ) -> Unsubscribe:
         return await self._connection.async_subscribe(brands=brands, callback=callback)
@@ -63,7 +65,14 @@ class RegisteredConnection:
 
     entry_id: str
     connection: Connection
-    devices: dict[str, DeviceDescriptor] = field(default_factory=dict)
+    collection: DeviceCollection[Device]
+
+    @property
+    def devices(self) -> dict[str, DeviceDescriptor]:
+        """Return the current inventory descriptors."""
+        return {
+            eui: device.descriptor for eui, device in self.collection.devices.items()
+        }
 
 
 @dataclass
@@ -72,6 +81,7 @@ class ConnectionRegistry:
 
     integrations: dict[str, list[tuple[str, int | str]]]
     connections: dict[str, RegisteredConnection] = field(default_factory=dict)
+    inventories: dict[str, DeviceCollection[Device]] = field(default_factory=dict)
     changed: list[Callable[[str], None]] = field(default_factory=list)
     events: list[Callable[[tuple[str, DeviceEvent]], None]] = field(
         default_factory=list
@@ -104,7 +114,9 @@ async def async_register_connection(
     registry = hass.data[DATA_REGISTRY]
     if entry.entry_id in registry.connections:
         raise ValueError("A connection is already registered for this entry")
-    registered = RegisteredConnection(entry.entry_id, _ConsumerConnection(connection))
+    consumer = _ConsumerConnection(connection)
+    collection = DeviceCollection(consumer)
+    registered = RegisteredConnection(entry.entry_id, consumer, collection)
     active = False
     disconnected = False
 
@@ -112,10 +124,7 @@ async def async_register_connection(
     def handle_event(event: DeviceEvent) -> None:
         if event.network_id != entry.entry_id:
             return
-        if event.type == EventType.REMOVED:
-            registered.devices.pop(event.dev_eui, None)
-        elif event.descriptor is not None:
-            registered.devices[event.dev_eui] = event.descriptor
+        collection.handle_event(event)
         if active:
             notify(registry.events, (entry.entry_id, event))
             if event.type != EventType.REMOVED:
@@ -154,10 +163,22 @@ async def async_register_connection(
         )
     except BaseException:
         unregister()
+        collection.close()
         raise
     if disconnected:
         unregister()
+        collection.close()
         raise ConnectionUnavailable("Connection lost during registration")
+    if previous := registry.inventories.get(entry.entry_id):
+        for eui, device in collection.devices.items():
+            if (
+                device.latest_status is None
+                and (old_device := previous.devices.get(eui)) is not None
+                and (status := old_device.latest_status) is not None
+            ):
+                collection.handle_event(status)
+        previous.close()
+    registry.inventories[entry.entry_id] = collection
     registry.connections[entry.entry_id] = registered
     active = True
     notify(registry.changed, entry.entry_id)

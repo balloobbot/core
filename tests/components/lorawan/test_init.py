@@ -1,9 +1,16 @@
 """Test provider availability, discovery and vendor routing."""
 
+from collections.abc import Callable
 from dataclasses import replace
 from unittest.mock import AsyncMock, Mock, patch
 
-from lorawan_connection import Downlink, EventType
+from lorawan_connection import (
+    DeviceEvent,
+    Downlink,
+    EventType,
+    StatusEvent,
+    Unsubscribe,
+)
 from lorawan_connection.backend.chirpstack import (
     AuthenticationError,
     ConnectionUnavailable,
@@ -14,9 +21,11 @@ from homeassistant.components.lorawan import (
     async_get_connections,
     async_register_connection,
 )
+from homeassistant.components.lorawan.connection import DATA_REGISTRY
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import CoreState, HomeAssistant
+from homeassistant.util import dt as dt_util
 
 from .test_libraries import DESCRIPTOR, inventory
 
@@ -230,3 +239,77 @@ async def test_registration_failure_closes_transport(
         assert not await hass.config_entries.async_setup(provider_entry.entry_id)
     mock_connection.close.assert_awaited_once()
     assert provider_entry.entry_id not in async_get_connections(hass)
+
+
+async def test_failed_reconnect_preserves_retained_status(
+    hass: HomeAssistant,
+    provider_entry: MockConfigEntry,
+    mock_connection: Mock,
+) -> None:
+    """Partial inventory from a failed registration cannot replace the saved state."""
+    mock_connection.devices = {DESCRIPTOR.dev_eui: DESCRIPTOR}
+    assert await hass.config_entries.async_setup(provider_entry.entry_id)
+    report = StatusEvent(
+        descriptor=DESCRIPTOR,
+        received_at=dt_util.utcnow(),
+        battery_level=42,
+        battery_level_unavailable=False,
+    )
+    mock_connection._emit(report)
+    original = hass.data[DATA_REGISTRY].inventories[provider_entry.entry_id]
+    await hass.config_entries.async_unload(provider_entry.entry_id)
+
+    async def failed_replay(
+        *,
+        brands: frozenset[tuple[str, int | str]] | None,
+        callback: Callable[[DeviceEvent], None],
+    ) -> Unsubscribe:
+        callback(inventory(replace(DESCRIPTOR, dev_eui="0201010101010102")))
+        raise ConnectionUnavailable("incomplete replay")
+
+    backend = Mock(
+        on_disconnect=Mock(return_value=Mock()),
+        async_subscribe=AsyncMock(side_effect=failed_replay),
+    )
+    with pytest.raises(ConnectionUnavailable, match="incomplete replay"):
+        await async_register_connection(hass, provider_entry, connection=backend)
+    assert hass.data[DATA_REGISTRY].inventories[provider_entry.entry_id] is original
+    assert list(original.devices) == [DESCRIPTOR.dev_eui]
+    assert original.devices[DESCRIPTOR.dev_eui].latest_status is report
+    assert not async_get_connections(hass)
+
+
+async def test_new_report_during_reconnect_wins_over_retained_status(
+    hass: HomeAssistant,
+    provider_entry: MockConfigEntry,
+    mock_connection: Mock,
+) -> None:
+    """Do not replace fresh replay activity with the previous session's report."""
+    mock_connection.devices = {DESCRIPTOR.dev_eui: DESCRIPTOR}
+    assert await hass.config_entries.async_setup(provider_entry.entry_id)
+    old = StatusEvent(descriptor=DESCRIPTOR, received_at=dt_util.utcnow())
+    mock_connection._emit(old)
+    previous = hass.data[DATA_REGISTRY].inventories[provider_entry.entry_id]
+    await hass.config_entries.async_unload(provider_entry.entry_id)
+    fresh = replace(old, battery_level=25, battery_level_unavailable=False)
+
+    async def replay(
+        *,
+        brands: frozenset[tuple[str, int | str]] | None,
+        callback: Callable[[DeviceEvent], None],
+    ) -> Unsubscribe:
+        callback(inventory(DESCRIPTOR))
+        callback(fresh)
+        return Mock()
+
+    backend = Mock(
+        on_disconnect=Mock(return_value=Mock()),
+        async_subscribe=AsyncMock(side_effect=replay),
+    )
+    unsubscribe = await async_register_connection(
+        hass, provider_entry, connection=backend
+    )
+    current = hass.data[DATA_REGISTRY].inventories[provider_entry.entry_id]
+    assert not previous.devices
+    assert current.devices[DESCRIPTOR.dev_eui].latest_status is fresh
+    unsubscribe()

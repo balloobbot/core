@@ -29,26 +29,42 @@ def async_register(hass: HomeAssistant) -> None:
 async def websocket_devices(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Return device descriptors, support reasons, and provider availability."""
+    """Return retained device status, support reasons, and provider availability."""
     registry = hass.data[DATA_REGISTRY]
-    registered = registry.connections.get(msg["entry_id"])
-    if registered is None:
+    collection = registry.inventories.get(msg["entry_id"])
+    if collection is None:
         connection.send_error(
             msg["id"], "not_found", "LoRaWAN connection is not registered"
         )
         return
+    available = msg["entry_id"] in registry.connections
+    devices = [
+        (
+            device.descriptor,
+            {
+                "received_at": status.received_at.isoformat(),
+                "battery_level": device.battery_level,
+                "external_power_source": device.external_power_source,
+                "downlink_margin": device.downlink_margin,
+            }
+            if (status := device.latest_status) is not None
+            else None,
+        )
+        for device in collection.devices.values()
+    ]
     connection.send_result(
         msg["id"],
         {
-            "available": True,
+            "available": available,
             "devices": [
                 {
                     **asdict(device),
+                    "status": status,
                     "unsupported_reason": await async_unsupported_reason(
                         hass, device, registry.integrations
                     ),
                 }
-                for device in tuple(registered.devices.values())
+                for device, status in devices
             ],
         },
     )

@@ -1,7 +1,7 @@
 # LoRaWAN proof of concept
 
-The PoC uses `lorawan-connection==0.10.0` from PyPI with its ChirpStack and
-The Things Stack backends.
+The PoC uses `lorawan-connection` with its ChirpStack and The Things Stack backends.
+The current branch requires the pinned development revision described below.
 
 Use a fresh HA test configuration. This branch does not migrate entries from
 the earlier PoC.
@@ -24,9 +24,14 @@ are also available on the proposal website.
 
 ## Library version
 
-This branch uses the typed event API in the published
-[`lorawan-connection` 0.11.0](https://pypi.org/project/lorawan-connection/0.11.0/).
-Install it from PyPI using the command below.
+The shared device inventory uses generic collections and status properties added
+after the published `lorawan-connection` 0.11.0 release. Install the exact revision
+in `script/lorawan_poc/requirements.txt`; it includes both backend extras.
+
+The integration manifest still pins the last published release. Run HA with
+`--skip-pip-packages lorawan-connection` to retain the development installation.
+Other integration dependencies are installed normally. Remove this override when
+the branch adopts a release containing the new API.
 
 Server manifests list their backend dependencies explicitly. The shared LoRaWAN
 integration installs the base library; HA does not check optional extras when
@@ -34,17 +39,18 @@ that distribution is already installed.
 
 ## Try it in Home Assistant
 
-1. Run `script/setup` in this worktree. For the tests and CLI examples, install
-   the published library with both backend extras:
+1. Run `script/setup` in this worktree. Then install the PoC's pinned library
+   revision and backend dependencies:
 
    ```sh
-   uv pip install --python .venv/bin/python 'lorawan-connection[chirpstack,tts]==0.11.0'
+   uv pip install --python .venv/bin/python -r script/lorawan_poc/requirements.txt
    ```
 
    Start HA with a fresh configuration:
 
    ```sh
-   uv run --no-sync python -m homeassistant --config ../lorawan-test-config
+   uv run --no-sync python -m homeassistant --config ../lorawan-test-config \
+     --skip-pip-packages lorawan-connection
    ```
 2. On ChirpStack, import the current device-profile catalog. Assign the **global
    SenseCAP S2101 catalog profile** for the device's radio region. A custom
@@ -63,7 +69,19 @@ that distribution is already installed.
    selection in each server integration defines which devices appear.
 
 The admin-only `lorawan/devices/list` websocket command takes `entry_id` and returns
-current descriptors and availability. Each descriptor includes `unsupported_reason`:
+descriptors, connection availability, and the latest observed LoRaWAN status.
+Each device includes `status`, which is `null` until a report arrives. A report
+contains `received_at`, `battery_level`, `external_power_source`, and
+`downlink_margin`. Battery level is `null` when unavailable or externally powered.
+
+The integration collects status from connection registration onward, including
+unrecognized devices. Closing the page does not stop collection. During a server
+outage, the endpoint returns retained values with `available: false` and their
+original timestamps. Successful reconnects remove devices absent from inventory.
+Server-entry deletion discards its collection. State is not persisted across HA
+restarts, and no backend history is queried.
+
+Each descriptor also includes `unsupported_reason`:
 
 - `no_catalog_identity`: the profile has no catalog model or vendor identity. Assign
   the device's imported global catalog profile in ChirpStack; a matching profile
@@ -85,8 +103,7 @@ retains the device identity without a codec.
 
 ## Source layout
 
-- `lorawan-connection`: common event Protocols, fixture
-  dataclasses, and the reusable `DeviceCollection` base.
+- `lorawan-connection`: typed events, common device status, and device collections.
 - `lorawan_connection.backend.chirpstack`: shared API helpers for the generated gRPC client,
   complete inventory polling, individual event streams, and one subscription.
 - `lorawan_connection.backend.tts`: optional TTS registry, application traffic,
@@ -351,7 +368,7 @@ No physical TTS radio hardware or hosted Community Edition deployment was tested
 
 To run the real TTS setup, CLI, uplink, TCP outage/recovery, and removal test,
 start the disposable TTS 3.36.2 environment described in the library's
-`script/tts_spike/README.md`. Then run:
+[TTS test instructions](https://github.com/home-assistant-libs/lorawan-connection/blob/d338fe8f5fc687b1a1d445cf6e51040872b67f88/script/tts_spike/README.md). Then run:
 
 ```sh
 LORAWAN_TTS_ADMIN_KEY_FILE=/path/to/local-test-admin-key.txt PYTHONPATH=. \
