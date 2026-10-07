@@ -24,10 +24,9 @@ are also available on the proposal website.
 
 ## Library version
 
-This branch requires the typed event API in `lorawan-connection` 0.11.0.
-That release is pending. Until publication, install a locally built 0.11.0 wheel
-into this worktree's virtual environment. The installation command below applies
-after the release is published.
+This branch uses the typed event API in the published
+[`lorawan-connection` 0.11.0](https://pypi.org/project/lorawan-connection/0.11.0/).
+Install it from PyPI using the command below.
 
 Server manifests list their backend dependencies explicitly. The shared LoRaWAN
 integration installs the base library; HA does not check optional extras when
