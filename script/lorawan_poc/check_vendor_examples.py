@@ -26,9 +26,9 @@ def main() -> None:
     )
     args = parser.parse_args()
     core = Path(__file__).resolve().parents[2]
-    for vendor in ("sensecap", "dragino"):
-        for name in ("__init__.py", "__main__.py"):
-            example = args.library / "examples" / f"{vendor}_lorawan" / name
+    for vendor in ("sensecap", "dragino", "milesight"):
+        for example in (args.library / "examples" / f"{vendor}_lorawan").glob("*.py"):
+            name = example.name
             vendored = (
                 core
                 / "homeassistant/components"
@@ -39,7 +39,14 @@ def main() -> None:
             )
             if normalized(example) != normalized(vendored):
                 parser.error(f"Vendored example differs: {vendored}")
-    print("Vendored examples match (ignoring import ordering)")
+    captures = Path("tests/fixtures/device_uplinks")
+    for fixture in (args.library / captures).glob("*.json"):
+        vendored = (
+            core / "tests/components/lorawan/fixtures/device_uplinks" / fixture.name
+        )
+        if fixture.read_bytes() != vendored.read_bytes():
+            parser.error(f"Captured uplink differs: {vendored}")
+    print("Vendored libraries and captured uplinks match (ignoring import ordering)")
 
 
 if __name__ == "__main__":

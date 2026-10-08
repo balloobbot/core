@@ -6,12 +6,14 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 
-from ._vendor.sensecap_lorawan import S2101, SenseCapDeviceCollection
+from ._vendor.sensecap_lorawan import SenseCapDevice, SenseCapDeviceCollection
 from .const import DOMAIN
 from .coordinator import SenseCapCoordinator
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
-type SenseCapConfigEntry = ConfigEntry[DeviceManager[S2101, SenseCapCoordinator]]
+type SenseCapConfigEntry = ConfigEntry[
+    DeviceManager[SenseCapDevice, SenseCapCoordinator]
+]
 PLATFORMS = [Platform.SENSOR]
 
 

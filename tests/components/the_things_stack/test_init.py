@@ -8,7 +8,6 @@ from lorawan_connection.backend.tts import AuthenticationError, TTSConnection
 import pytest
 
 from homeassistant.components.lorawan import async_get_connections
-from homeassistant.components.sensecap import S2101
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import CoreState, HomeAssistant
@@ -54,7 +53,7 @@ async def test_mixed_connections(
         name="Bedroom",
         stack="tts",
         brand_id="sensecap",
-        model_id=S2101.identifiers["tts"][1],
+        model_id="sensecaps2101-temp-humid",
     )
     mock_connection.devices = {tts.dev_eui: tts}
     assert await hass.config_entries.async_setup(provider_entry.entry_id)

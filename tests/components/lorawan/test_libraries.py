@@ -145,7 +145,7 @@ def test_zero_unknown_fields_and_port() -> None:
             dev_eui=DESCRIPTOR.dev_eui,
             received_at=NOW,
             data=PAYLOAD,
-            f_port=2,
+            f_port=99,
         )
     )
     assert collection.devices[DESCRIPTOR.dev_eui].temperature is None
@@ -215,4 +215,8 @@ async def test_registered_models(
     integration = await async_get_integration(hass, domain)
     platform = await integration.async_get_platform("lorawan")
     assert models == platform.DEVICE_MODELS
-    assert all(model.identifiers["chirpstack"][0] == brand_id for model in models)
+    assert all(
+        (stack, identity[0]) in registrations[domain]
+        for model in models
+        for stack, identity in model.identifiers.items()
+    )

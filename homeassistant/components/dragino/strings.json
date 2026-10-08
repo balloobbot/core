@@ -16,11 +16,32 @@
       }
     },
     "sensor": {
+      "battery_voltage": {
+        "name": "Battery voltage"
+      },
       "current": {
         "name": "Current {channel}"
       },
       "digital_count": {
         "name": "Digital count {channel}"
+      },
+      "external_count": {
+        "name": "External count"
+      },
+      "external_temperature": {
+        "name": "External temperature"
+      },
+      "external_voltage": {
+        "name": "External voltage"
+      },
+      "humidity": {
+        "name": "Humidity"
+      },
+      "illuminance": {
+        "name": "Illuminance"
+      },
+      "temperature": {
+        "name": "Temperature"
       },
       "voltage": {
         "name": "Voltage {channel}"

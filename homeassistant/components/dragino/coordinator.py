@@ -8,16 +8,16 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from ._vendor.dragino_lorawan import LT22222
+from ._vendor.dragino_lorawan import DraginoDevice
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class DraginoCoordinator(DataUpdateCoordinator[LT22222]):
+class DraginoCoordinator(DataUpdateCoordinator[DraginoDevice]):
     """Distribute push updates from one physical device."""
 
-    def __init__(self, hass: HomeAssistant, device: LT22222) -> None:
+    def __init__(self, hass: HomeAssistant, device: DraginoDevice) -> None:
         """Subscribe once to the library model."""
         # The device manager shuts down coordinators when their models retire.
         super().__init__(hass, _LOGGER, config_entry=None, name=device.descriptor.name)
@@ -31,7 +31,7 @@ class DraginoCoordinator(DataUpdateCoordinator[LT22222]):
             identifiers={device_identifier(DOMAIN, self.data)},
             name=self.data.descriptor.name,
             manufacturer="Dragino",
-            model="LT-22222-L",
+            model=self.data.model_name,
         )
 
     @callback

@@ -495,6 +495,7 @@ FLOWS = {
         "midea",
         "miele",
         "mikrotik",
+        "milesight",
         "mill",
         "minecraft_server",
         "mitsubishi_comfort",

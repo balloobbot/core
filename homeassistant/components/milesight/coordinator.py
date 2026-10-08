@@ -8,16 +8,16 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from ._vendor.sensecap_lorawan import SenseCapDevice
+from ._vendor.milesight_lorawan import MilesightDevice
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class SenseCapCoordinator(DataUpdateCoordinator[SenseCapDevice]):
+class MilesightCoordinator(DataUpdateCoordinator[MilesightDevice]):
     """Distribute push updates from one physical device."""
 
-    def __init__(self, hass: HomeAssistant, device: SenseCapDevice) -> None:
+    def __init__(self, hass: HomeAssistant, device: MilesightDevice) -> None:
         """Subscribe once to the library model."""
         # The device manager shuts down coordinators when their models retire.
         super().__init__(hass, _LOGGER, config_entry=None, name=device.descriptor.name)
@@ -30,8 +30,8 @@ class SenseCapCoordinator(DataUpdateCoordinator[SenseCapDevice]):
         return DeviceInfo(
             identifiers={device_identifier(DOMAIN, self.data)},
             name=self.data.descriptor.name,
-            manufacturer="Seeed Studio",
-            model=f"SenseCAP {type(self.data).__name__}",
+            manufacturer="Milesight",
+            model=self.data.model_name,
         )
 
     @callback

@@ -1,0 +1,45 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "Milesight is already configured"
+    },
+    "step": {
+      "confirm": {
+        "description": "Add supported Milesight devices from all configured LoRaWAN servers."
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "battery": {
+        "name": "Battery"
+      },
+      "pressure": {
+        "name": "Pressure"
+      },
+      "pulse_count_1": {
+        "name": "Pulse count 1"
+      },
+      "pulse_count_2": {
+        "name": "Pulse count 2"
+      },
+      "temperature": {
+        "name": "Temperature"
+      },
+      "valve_1": {
+        "name": "Valve 1",
+        "state": {
+          "closed": "Closed",
+          "open": "Open"
+        }
+      },
+      "valve_2": {
+        "name": "Valve 2",
+        "state": {
+          "closed": "Closed",
+          "open": "Open"
+        }
+      }
+    }
+  }
+}

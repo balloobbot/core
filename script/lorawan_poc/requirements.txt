@@ -1,4 +1,4 @@
 # Unreleased generic collections and common device status.
-lorawan-connection[chirpstack,tts] @ git+https://github.com/home-assistant-libs/lorawan-connection.git@d338fe8f5fc687b1a1d445cf6e51040872b67f88
+lorawan-connection[chirpstack,tts] @ git+https://github.com/home-assistant-libs/lorawan-connection.git@0a6cdd8bae07a253cbc3e59dfdfe900f75ec4749
 grpcio==1.83.1
 protobuf==7.36.0

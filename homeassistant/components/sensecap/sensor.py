@@ -11,13 +11,13 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import PERCENTAGE, UnitOfTemperature
+from homeassistant.const import LIGHT_LUX, PERCENTAGE, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import SenseCapConfigEntry
-from ._vendor.sensecap_lorawan import S2101
+from ._vendor.sensecap_lorawan import S2101, S2102, SenseCapDevice
 from .coordinator import SenseCapCoordinator
 
 PARALLEL_UPDATES = 0
@@ -27,13 +27,17 @@ PARALLEL_UPDATES = 0
 class SenseCapSensorDescription(SensorEntityDescription):
     """Select a typed measurement from the device model."""
 
-    value_fn: Callable[[S2101], float | None]
+    device_type: type[S2101 | S2102]
+    value_fn: Callable[[SenseCapDevice], float | None]
 
 
 DESCRIPTIONS = (
     SenseCapSensorDescription(
         key="temperature",
-        value_fn=lambda device: device.temperature,
+        device_type=S2101,
+        value_fn=lambda device: (
+            device.temperature if isinstance(device, S2101) else None
+        ),
         translation_key="temperature",
         device_class=SensorDeviceClass.TEMPERATURE,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
@@ -41,10 +45,22 @@ DESCRIPTIONS = (
     ),
     SenseCapSensorDescription(
         key="humidity",
-        value_fn=lambda device: device.humidity,
+        device_type=S2101,
+        value_fn=lambda device: device.humidity if isinstance(device, S2101) else None,
         translation_key="humidity",
         device_class=SensorDeviceClass.HUMIDITY,
         native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    SenseCapSensorDescription(
+        key="illuminance",
+        device_type=S2102,
+        value_fn=lambda device: (
+            device.illuminance if isinstance(device, S2102) else None
+        ),
+        translation_key="illuminance",
+        device_class=SensorDeviceClass.ILLUMINANCE,
+        native_unit_of_measurement=LIGHT_LUX,
         state_class=SensorStateClass.MEASUREMENT,
     ),
 )
@@ -60,13 +76,15 @@ async def async_setup_entry(
     @callback
     def added(coordinator: SenseCapCoordinator) -> None:
         async_add_entities(
-            SenseCapSensor(coordinator, description) for description in DESCRIPTIONS
+            SenseCapSensor(coordinator, description)
+            for description in DESCRIPTIONS
+            if isinstance(coordinator.data, description.device_type)
         )
 
     entry.async_on_unload(entry.runtime_data.subscribe_coordinator_added(added))
 
 
-class SenseCapSensor(LoRaWANEntity[S2101], SensorEntity):
+class SenseCapSensor(LoRaWANEntity[SenseCapDevice], SensorEntity):
     """Read typed state; decoding and event interpretation belong to the library."""
 
     coordinator: SenseCapCoordinator

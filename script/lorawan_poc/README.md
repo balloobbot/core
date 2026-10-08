@@ -7,7 +7,8 @@ Use a fresh HA test configuration. This branch does not migrate entries from
 the earlier PoC.
 
 The `chirpstack` and `the_things_stack` integrations connect to existing servers.
-The shared `lorawan` integration discovers devices for `sensecap` and `dragino`.
+The shared `lorawan` integration discovers devices for `sensecap`, `dragino`, and
+`milesight`.
 Provision devices on ChirpStack 4.19 or TTS 3.36 before connecting. BLE provisioning,
 gateway setup, a managed HA app, and a custom frontend are future work.
 
@@ -52,8 +53,8 @@ that distribution is already installed.
    uv run --no-sync python -m homeassistant --config ../lorawan-test-config \
      --skip-pip-packages lorawan-connection
    ```
-2. On ChirpStack, import the current device-profile catalog. Assign the **global
-   SenseCAP S2101 catalog profile** for the device's radio region. A custom
+2. On ChirpStack, import the current device-profile catalog. Assign a supported model's **global
+   catalog profile** for the device's radio region. A custom
    tenant profile with the same name is not enough: ChirpStack ignores the
    `device_id` field when creating a custom profile.
 3. Enable ChirpStack's per-device event log (enabled by default). The current
@@ -64,7 +65,7 @@ that distribution is already installed.
 5. Select a tenant and at least one application. Setup validates device/profile read access before creating the entry. Global keys can list tenants. Tenant-scoped
    keys require their tenant UUID. ChirpStack reports insufficient listing scope
    as UNAUTHENTICATED, so the flow validates the key after selecting a tenant. Full-access and read-only keys both work.
-6. Confirm the discovered SenseCAP or Dragino integration. Each vendor has one
+6. Confirm the discovered SenseCAP, Dragino, or Milesight integration. Each vendor has one
    entry covering supported devices across all registered servers. Application
    selection in each server integration defines which devices appear.
 
@@ -108,17 +109,56 @@ retains the device identity without a codec.
   complete inventory polling, individual event streams, and one subscription.
 - `lorawan_connection.backend.tts`: optional TTS registry, application traffic,
   lifecycle events, and downlink queueing through gRPC.
-- `homeassistant/components/sensecap/_vendor/sensecap_lorawan`: S2101 decoding,
+- `homeassistant/components/sensecap/_vendor/sensecap_lorawan`: S2101 and S2102 decoding,
   model selection, partial state, and state observers.
-- `homeassistant/components/dragino/_vendor/dragino_lorawan`: LT-22222-L models
-  and command encoding.
+- `homeassistant/components/dragino/_vendor/dragino_lorawan`: LT-22222-L decoding
+  and commands, plus LHT65 telemetry.
+- `homeassistant/components/milesight/_vendor/milesight_lorawan`: TS201 and UC51x telemetry.
 - `tests/components/chirpstack`, `tests/components/the_things_stack`,
   `tests/components/lorawan`, `tests/components/sensecap`, and
-  `tests/components/dragino`: isolated tests.
+  `tests/components/dragino`, and `tests/components/milesight`: isolated tests.
 
-The SenseCAP and Dragino libraries are vendored temporarily and use no HA APIs.
+The SenseCAP, Dragino, and Milesight libraries are vendored temporarily and use no HA APIs.
 The S2101 decoder validates record lengths and measurement ranges. It does not
 validate the two-byte trailer because the reference decoder’s CRC routine is a stub.
+
+## Supported device models
+
+Models use published catalog identities. Custom profile names do not select a
+model, and no deployment-specific profile IDs are included in the integrations.
+
+| Model | ChirpStack catalog | TTN catalog ID | HA entities |
+| --- | --- | --- | --- |
+| SenseCAP S2101 | Supported | `sensecap / sensecaps2101-temp-humid` | Temperature, humidity |
+| SenseCAP S2102 | Supported | `sensecap / sensecaps2102-light` | Illuminance |
+| Dragino LT-22222-L | Supported | `dragino / lt22222-l` | Existing inputs, measurements, counters, and output switches |
+| Dragino LHT65 | No matching entry | `dragino / lht65` | Temperature, humidity, external temperature, battery voltage; optional external voltage, illuminance, and pulse count |
+| Milesight TS201 | No matching entry | `milesight-iot / ts201` | Temperature, reported battery |
+| Milesight UC51x | No matching entry | `milesight-iot / uc51x` | Reported valve states, pulse counters, reported battery; optional pressure |
+
+The Things Stack backend matches the TTN vendor and model IDs in `version_ids`.
+The LHT65N ChirpStack entry is a different model and is not used for LHT65.
+ChirpStack support for LHT65, TS201, and UC51x needs corresponding catalog entries.
+Private profile aliases can be supplied by an external test harness without
+changing the integration's model identities.
+
+SenseCAP telemetry accepts FPorts 1 and 2. Milesight uses 85; LHT65 uses 2.
+Decoders reject truncated readings and preserve partial updates. Older reports
+cannot overwrite newer readings. History replies do not become current state.
+Vendor battery readings come from uplinks and remain separate from common MAC
+status. UC51x valve entities report state only; this PoC does not send valve commands.
+
+Offline regression tests replay captured S2101, S2102, and TS201 payloads through
+the vendor collections. Fixtures retain raw bytes and FPorts with synthetic device
+identifiers. UC51x and LHT65 tests use published codec examples.
+
+Decoder and identity references, pinned to the reviewed catalog revisions:
+
+- [SenseCAP S2102 ChirpStack entry](https://github.com/chirpstack/chirpstack-device-profiles/blob/6123d132f013cb1615c26a8b8bccbaa4b14f72cc/vendors/seeed-technology-co-ltd/devices/sensecap-s2102.toml)
+- [SenseCAP TTN decoder and fixtures](https://github.com/TheThingsNetwork/lorawan-devices/blob/7693223153369c9d6ded148c335b454cd318c756/vendor/sensecap/sensecap210x-codec.yaml)
+- [Milesight TS201 TTN decoder and fixtures](https://github.com/TheThingsNetwork/lorawan-devices/blob/7693223153369c9d6ded148c335b454cd318c756/vendor/milesight-iot/ts201-codec.yaml)
+- [Milesight UC51x TTN decoder and fixtures](https://github.com/TheThingsNetwork/lorawan-devices/blob/7693223153369c9d6ded148c335b454cd318c756/vendor/milesight-iot/uc51x-codec.yaml)
+- [Dragino LHT65 TTN decoder and fixtures](https://github.com/TheThingsNetwork/lorawan-devices/blob/7693223153369c9d6ded148c335b454cd318c756/vendor/dragino/lht65-codec.yaml)
 
 ## Library author pattern
 
@@ -306,7 +346,7 @@ successful collection setup, the integration removes registry devices absent fro
 the current collection. This catches removals while HA was offline. Failed setup
 and ordinary unload preserve registry records.
 
-Compare vendored examples with the library checkout:
+Compare vendored libraries and captured uplink fixtures with the library checkout:
 
 ```sh
 uv run --no-sync python script/lorawan_poc/check_vendor_examples.py ../lorawan-connection
