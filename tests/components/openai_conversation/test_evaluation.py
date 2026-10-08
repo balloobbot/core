@@ -147,7 +147,7 @@ async def test_evaluate(
     )
     assert hass.states.get(evaluation_entity).attributes["supported_features"] == (
         ai_task.AITaskEntityFeature.EVALUATE
-        | ai_task.AITaskEntityFeature.EVALUATE_ATTACHMENTS
+        | ai_task.AITaskEntityFeature.SUPPORT_ATTACHMENTS
     )
 
 

@@ -173,7 +173,7 @@ class OpenAIEvaluationEntity(ai_task.AITaskEntity, OpenAIBaseLLMEntity):
 
     _attr_supported_features = (
         ai_task.AITaskEntityFeature.EVALUATE
-        | ai_task.AITaskEntityFeature.EVALUATE_ATTACHMENTS
+        | ai_task.AITaskEntityFeature.SUPPORT_ATTACHMENTS
     )
 
     @override
