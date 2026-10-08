@@ -78,6 +78,7 @@ from .const import (
     RECOMMENDED_CODE_INTERPRETER,
     RECOMMENDED_CONVERSATION_OPTIONS,
     RECOMMENDED_DECISION_MODEL,
+    RECOMMENDED_EVALUATION_OPTIONS,
     RECOMMENDED_IMAGE_MODEL,
     RECOMMENDED_MAX_TOKENS,
     RECOMMENDED_PRO_MODE,
@@ -129,7 +130,7 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for OpenAI Conversation."""
 
     VERSION = 2
-    MINOR_VERSION = 7
+    MINOR_VERSION = 8
 
     @override
     async def async_step_user(
@@ -183,6 +184,12 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
                             "subentry_type": "ai_task_data",
                             "data": RECOMMENDED_AI_TASK_OPTIONS,
                             "title": DEFAULT_AI_TASK_NAME,
+                            "unique_id": None,
+                        },
+                        {
+                            "subentry_type": "ai_task_evaluate",
+                            "data": RECOMMENDED_EVALUATION_OPTIONS,
+                            "title": DEFAULT_EVALUATION_NAME,
                             "unique_id": None,
                         },
                         {

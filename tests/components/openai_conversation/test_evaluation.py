@@ -104,14 +104,14 @@ async def evaluation_entity(
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
         {
-            "name": "OpenAI Evaluation",
+            "name": "Custom Evaluation",
             "chat_model": RECOMMENDED_DECISION_MODEL,
         },
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {"chat_model": RECOMMENDED_DECISION_MODEL}
     await hass.async_block_till_done()
-    return "ai_task.openai_evaluation"
+    return "ai_task.custom_evaluation"
 
 
 @pytest.mark.parametrize(
