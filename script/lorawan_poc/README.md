@@ -25,14 +25,9 @@ are also available on the proposal website.
 
 ## Library version
 
-The shared device inventory uses generic collections and status properties added
-after the published `lorawan-connection` 0.11.0 release. Install the exact revision
-in `script/lorawan_poc/requirements.txt`; it includes both backend extras.
-
-The integration manifest still pins the last published release. Run HA with
-`--skip-pip-packages lorawan-connection` to retain the development installation.
-Other integration dependencies are installed normally. Remove this override when
-the branch adopts a release containing the new API.
+The PoC uses `lorawan-connection` 0.12.0 from PyPI. Install
+`script/lorawan_poc/requirements.txt` for the library and both backend extras.
+Home Assistant installs the same library version through the LoRaWAN manifest.
 
 Server manifests list their backend dependencies explicitly. The shared LoRaWAN
 integration installs the base library; HA does not check optional extras when
@@ -41,7 +36,7 @@ that distribution is already installed.
 ## Try it in Home Assistant
 
 1. Run `script/setup` in this worktree. Then install the PoC's pinned library
-   revision and backend dependencies:
+   release and backend dependencies:
 
    ```sh
    uv pip install --python .venv/bin/python -r script/lorawan_poc/requirements.txt
@@ -50,8 +45,7 @@ that distribution is already installed.
    Start HA with a fresh configuration:
 
    ```sh
-   uv run --no-sync python -m homeassistant --config ../lorawan-test-config \
-     --skip-pip-packages lorawan-connection
+   uv run --no-sync python -m homeassistant --config ../lorawan-test-config
    ```
 2. On ChirpStack, import the current device-profile catalog. Assign a supported model's **global
    catalog profile** for the device's radio region. A custom
