@@ -226,14 +226,18 @@ class OpenAIEvaluationEntity(ai_task.AITaskEntity, OpenAIBaseLLMEntity):
             if state is not None:
                 content.append({"type": "input_text", "text": state_text})
             for attachment in task.attachments:
-                if attachment.mime_type not in (
+                mime_type = attachment.mime_type.partition(";")[0].strip().lower()
+                if mime_type == "image/jpg":
+                    mime_type = "image/jpeg"
+                if mime_type not in (
                     "image/png",
                     "image/jpeg",
                     "image/webp",
                     "image/gif",
                 ):
                     raise HomeAssistantError(
-                        "OpenAI decisions only support image attachments"
+                        "OpenAI decisions only support JPEG, PNG, WebP, and GIF "
+                        f"image attachments; received {attachment.mime_type}"
                     )
                 try:
                     data = await self.hass.async_add_executor_job(
@@ -247,7 +251,7 @@ class OpenAIEvaluationEntity(ai_task.AITaskEntity, OpenAIBaseLLMEntity):
                 content.append(
                     {
                         "type": "input_image",
-                        "image_url": f"data:{attachment.mime_type};base64,{encoded}",
+                        "image_url": f"data:{mime_type};base64,{encoded}",
                     }
                 )
             decision_input = [{"role": "user", "content": content}]

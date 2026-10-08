@@ -10,7 +10,7 @@ from openai.types.decision import Decision
 import pytest
 from syrupy.assertion import SnapshotAssertion
 
-from homeassistant.components import ai_task, media_source
+from homeassistant.components import ai_task, camera, media_source
 from homeassistant.components.openai_conversation.const import (
     RECOMMENDED_DECISION_MODEL,
 )
@@ -209,7 +209,10 @@ async def test_unsupported_attachment(
                 path=tmp_path / "audio.wav",
             ),
         ),
-        pytest.raises(HomeAssistantError, match="only support image attachments"),
+        pytest.raises(
+            HomeAssistantError,
+            match="only support JPEG, PNG, WebP, and GIF image attachments; received audio/wav",
+        ),
     ):
         await ai_task.async_evaluate(
             hass,
@@ -381,3 +384,50 @@ async def test_image_limit(
             * 129,
         )
     mock_decisions.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "content_type",
+    ["image/jpeg", "image/jpg", "IMAGE/JPEG", "image/jpeg; charset=binary"],
+)
+async def test_camera_snapshot(
+    hass: HomeAssistant,
+    evaluation_entity: str,
+    mock_decisions: AsyncMock,
+    content_type: str,
+) -> None:
+    """Send camera snapshots as images regardless of the camera's stream type."""
+    with patch(
+        "homeassistant.components.camera.async_get_image",
+        return_value=camera.Image(content_type=content_type, content=b"camera image"),
+    ) as mock_get_image:
+        await hass.services.async_call(
+            ai_task.DOMAIN,
+            "evaluate",
+            {
+                "task_name": "Delivery",
+                "entity_id": evaluation_entity,
+                "questions": QUESTIONS,
+                "attachments": [
+                    {
+                        "media_content_id": "media-source://camera/camera.front_door",
+                        "media_content_type": "application/vnd.apple.mpegurl",
+                    }
+                ],
+            },
+            blocking=True,
+            return_response=True,
+        )
+
+    mock_get_image.assert_called_once_with(hass, "camera.front_door")
+    assert mock_decisions.call_args.kwargs["input"] == [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "input_image",
+                    "image_url": "data:image/jpeg;base64,Y2FtZXJhIGltYWdl",
+                }
+            ],
+        }
+    ]
