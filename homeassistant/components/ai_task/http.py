@@ -36,6 +36,7 @@ def websocket_get_preferences(
 @websocket_api.websocket_command(
     {
         probatio.Required("type"): "ai_task/preferences/set",
+        probatio.Optional("evaluate_entity_id"): probatio.Any(str, None),
         probatio.Optional("gen_data_entity_id"): probatio.Any(str, None),
         probatio.Optional("gen_image_entity_id"): probatio.Any(str, None),
     }

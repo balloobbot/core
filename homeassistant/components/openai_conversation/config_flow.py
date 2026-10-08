@@ -68,6 +68,7 @@ from .const import (
     CONF_WEB_SEARCH_USER_LOCATION,
     DEFAULT_AI_TASK_NAME,
     DEFAULT_CONVERSATION_NAME,
+    DEFAULT_EVALUATION_NAME,
     DEFAULT_STT_NAME,
     DEFAULT_STT_PROMPT,
     DEFAULT_TTS_NAME,
@@ -76,6 +77,7 @@ from .const import (
     RECOMMENDED_CHAT_MODEL,
     RECOMMENDED_CODE_INTERPRETER,
     RECOMMENDED_CONVERSATION_OPTIONS,
+    RECOMMENDED_DECISION_MODEL,
     RECOMMENDED_IMAGE_MODEL,
     RECOMMENDED_MAX_TOKENS,
     RECOMMENDED_PRO_MODE,
@@ -237,6 +239,7 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
         return {
             "conversation": OpenAISubentryFlowHandler,
             "ai_task_data": OpenAISubentryFlowHandler,
+            "ai_task_evaluate": OpenAISubentryEvaluationFlowHandler,
             "stt": OpenAISubentrySTTFlowHandler,
             "tts": OpenAISubentryTTSFlowHandler,
         }
@@ -881,4 +884,36 @@ class OpenAISubentryTTSFlowHandler(ConfigSubentryFlow):
                 probatio.Schema(step_schema), options
             ),
             errors=errors,
+        )
+
+
+class OpenAISubentryEvaluationFlowHandler(ConfigSubentryFlow):
+    """Configure an OpenAI evaluation entity."""
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Add an evaluation task entity."""
+        if self._get_entry().state is not ConfigEntryState.LOADED:
+            return self.async_abort(reason="entry_not_loaded")
+        if user_input is not None:
+            return self.async_create_entry(
+                title=user_input[CONF_NAME],
+                data={CONF_CHAT_MODEL: user_input[CONF_CHAT_MODEL]},
+            )
+        return self.async_show_form(
+            step_id="user",
+            data_schema=probatio.Schema(
+                {
+                    probatio.Required(CONF_NAME, default=DEFAULT_EVALUATION_NAME): str,
+                    probatio.Required(
+                        CONF_CHAT_MODEL, default=RECOMMENDED_DECISION_MODEL
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=[RECOMMENDED_DECISION_MODEL],
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                }
+            ),
         )

@@ -11,6 +11,18 @@ from homeassistant.helpers.typing import UNDEFINED, ConfigType, UndefinedType
 
 from .const import DATA_COMPONENT, DATA_PREFERENCES, DOMAIN, AITaskEntityFeature
 from .entity import AITaskEntity
+from .evaluation import (
+    ChoiceAnswer,
+    ChoiceQuestion,
+    EvaluationAnswer,
+    EvaluationQuestion,
+    EvaluationTask,
+    EvaluationTaskResult,
+    NoulAnswer,
+    NoulQuestion,
+    ScoreAnswer,
+    ScoreQuestion,
+)
 from .http import async_setup as async_setup_http
 from .media_source import async_get_media_source
 from .services import async_setup_services
@@ -19,6 +31,7 @@ from .task import (
     GenDataTaskResult,
     GenImageTask,
     GenImageTaskResult,
+    async_evaluate,
     async_generate_data,
     async_generate_image,
 )
@@ -27,10 +40,21 @@ __all__ = [
     "DOMAIN",
     "AITaskEntity",
     "AITaskEntityFeature",
+    "ChoiceAnswer",
+    "ChoiceQuestion",
+    "EvaluationAnswer",
+    "EvaluationQuestion",
+    "EvaluationTask",
+    "EvaluationTaskResult",
     "GenDataTask",
     "GenDataTaskResult",
     "GenImageTask",
     "GenImageTaskResult",
+    "NoulAnswer",
+    "NoulQuestion",
+    "ScoreAnswer",
+    "ScoreQuestion",
+    "async_evaluate",
     "async_generate_data",
     "async_generate_image",
 ]
@@ -67,8 +91,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 class AITaskPreferences:
     """AI Task preferences."""
 
-    KEYS = ("gen_data_entity_id", "gen_image_entity_id")
+    KEYS = ("gen_data_entity_id", "gen_image_entity_id", "evaluate_entity_id")
 
+    evaluate_entity_id: str | None = None
     gen_data_entity_id: str | None = None
     gen_image_entity_id: str | None = None
 
@@ -90,12 +115,14 @@ class AITaskPreferences:
     def async_set_preferences(
         self,
         *,
+        evaluate_entity_id: str | UndefinedType | None = UNDEFINED,
         gen_data_entity_id: str | UndefinedType | None = UNDEFINED,
         gen_image_entity_id: str | UndefinedType | None = UNDEFINED,
     ) -> None:
         """Set the preferences."""
         changed = False
         for key, value in (
+            ("evaluate_entity_id", evaluate_entity_id),
             ("gen_data_entity_id", gen_data_entity_id),
             ("gen_image_entity_id", gen_image_entity_id),
         ):
