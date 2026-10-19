@@ -12,6 +12,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from .common import (
     init_integration,
@@ -171,6 +172,7 @@ async def test_diffuser_removed_from_account(
         (DOMAIN, "lot123"), config_entry.entry_id
     )
 
+    sensors_coordinator = config_entry.runtime_data.sensors["lot123"]
     client.hubs.side_effect = list
     await _tick(hass, freezer, timedelta(minutes=5))
 
@@ -182,6 +184,10 @@ async def test_diffuser_removed_from_account(
     assert not er.async_entries_for_config_entry(entity_registry, config_entry.entry_id)
     assert hass.states.get("switch.genie") is None
     assert hass.states.get("sensor.genie_perfume") is None
+
+    with pytest.raises(UpdateFailed) as exc_info:
+        await sensors_coordinator._async_update_data()
+    assert exc_info.value.translation_key == "diffuser_not_found"
 
 
 async def test_diffuser_added_to_account(
