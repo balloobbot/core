@@ -118,10 +118,10 @@ async def test_prompt_and_parameters(hass: HomeAssistant) -> None:
     assert result.prompt is not None
     assert (
         '- Party mode: "start party mode in [the] {room}", "party time"\n'
-        '- Horses: "talk about horses", "party time"'
+        '- Horses: "talk about horses"'
     ) in result.prompt
 
-    # A sentence shared by two automations is one choice.
+    # A sentence shared by two automations is listed once.
     assert probatio.to_openapi(tool.parameters)["properties"]["sentence"]["enum"] == [
         "start party mode in [the] {room}",
         "party time",

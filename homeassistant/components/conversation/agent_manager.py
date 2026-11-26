@@ -50,8 +50,8 @@ if TYPE_CHECKING:
 class SentenceTrigger:
     """A registered sentence trigger."""
 
-    name: str | None
-    """Name of the automation that owns the trigger."""
+    name: str
+    """Name of the automation, script or entity that owns the trigger."""
 
     sentences: list[str]
     callback: TRIGGER_CALLBACK_TYPE
@@ -274,7 +274,7 @@ class AgentManager:
         self,
         sentences: list[str],
         trigger_callback: TRIGGER_CALLBACK_TYPE,
-        name: str | None = None,
+        name: str,
     ) -> CALLBACK_TYPE:
         """Register a trigger."""
         trigger_id = self._trigger_callback_counter

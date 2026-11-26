@@ -637,7 +637,7 @@ async def test_trigger_sentences(hass: HomeAssistant) -> None:
     manager = get_agent_manager(hass)
 
     callback = AsyncMock(return_value=trigger_response)
-    unregister = manager.register_trigger(trigger_sentences, callback)
+    unregister = manager.register_trigger(trigger_sentences, callback, "test")
 
     result = await conversation.async_converse(hass, "Not the trigger", None, Context())
     assert result.response.response_type is intent.IntentResponseType.ERROR
@@ -693,7 +693,7 @@ async def test_trigger_sentence_response_translation(
         return_value=translations.get(language),
     ):
         unregister = manager.register_trigger(
-            ["test sentence"], AsyncMock(return_value=None)
+            ["test sentence"], AsyncMock(return_value=None), "test"
         )
         result = await conversation.async_converse(
             hass, "test sentence", None, Context()
@@ -4326,7 +4326,7 @@ async def test_trigger_tool_call_in_chat_log(hass: HomeAssistant) -> None:
 
     manager = get_agent_manager(hass)
     callback = AsyncMock(return_value=trigger_response)
-    manager.register_trigger([trigger_sentence], callback)
+    manager.register_trigger([trigger_sentence], callback, "test")
 
     result = await conversation.async_converse(
         hass, trigger_sentence, None, Context(), None
@@ -4492,7 +4492,7 @@ async def test_prepare_builds_what_recognition_needs(hass: HomeAssistant) -> Non
         "light.kitchen", "off", attributes={ATTR_FRIENDLY_NAME: "Kitchen light"}
     )
     get_agent_manager(hass).register_trigger(
-        ["it is party time"], AsyncMock(return_value="Party")
+        ["it is party time"], AsyncMock(return_value="Party"), "test"
     )
     agent = async_get_agent(hass)
     assert isinstance(agent, default_agent.DefaultAgent)
@@ -4551,7 +4551,7 @@ async def test_prepare_strict_intents_only(hass: HomeAssistant) -> None:
         "light.kitchen", "off", attributes={ATTR_FRIENDLY_NAME: "Kitchen light"}
     )
     get_agent_manager(hass).register_trigger(
-        ["it is party time"], AsyncMock(return_value="Party")
+        ["it is party time"], AsyncMock(return_value="Party"), "test"
     )
     agent = async_get_agent(hass)
     assert isinstance(agent, default_agent.DefaultAgent)

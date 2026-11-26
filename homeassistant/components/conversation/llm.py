@@ -142,25 +142,22 @@ def async_get_tools(
     # The tool description is not enough. A model that searches for deferred
     # tools by keyword would miss a request that only matches in meaning.
     lines = [
-        "The user defined voice commands in automations. When a request matches "
+        "The user defined these voice commands. When a request matches "
         "one of these sentences in meaning, even if the wording differs, call "
         f"{TriggerSentenceTool.name} with that sentence. In a sentence, [x] is "
         "optional, (a|b) is a choice, and {name} is a value to pass in slots."
     ]
-    entries = []
+    # Editing an automation in the UI registers a second copy of its trigger,
+    # so each sentence is listed once, under the first trigger that has it.
+    all_sentences: dict[str, None] = {}
     for trigger in triggers:
-        sentences = ", ".join(
-            json.dumps(sentence, ensure_ascii=False) for sentence in trigger.sentences
-        )
-        entries.append(
-            f"- {trigger.name}: {sentences}" if trigger.name else f"- {sentences}"
-        )
-    # Editing an automation in the UI registers a second copy of its trigger.
-    lines.extend(dict.fromkeys(entries))
+        if new := [s for s in trigger.sentences if s not in all_sentences]:
+            all_sentences.update(dict.fromkeys(new))
+            lines.append(
+                f"- {trigger.name}: "
+                + ", ".join(json.dumps(s, ensure_ascii=False) for s in new)
+            )
 
-    all_sentences = list(
-        dict.fromkeys(
-            sentence for trigger in triggers for sentence in trigger.sentences
-        )
+    return LLMTools(
+        tools=[TriggerSentenceTool(list(all_sentences))], prompt="\n".join(lines)
     )
-    return LLMTools(tools=[TriggerSentenceTool(all_sentences)], prompt="\n".join(lines))
