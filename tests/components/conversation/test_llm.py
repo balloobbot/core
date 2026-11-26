@@ -2,10 +2,16 @@
 
 import probatio
 import pytest
+from pytest_homeassistant.common import MockConfigEntry
 
 from homeassistant.components import conversation, llm as llm_component
 from homeassistant.core import Context, HomeAssistant
-from homeassistant.helpers import chat_session, llm
+from homeassistant.helpers import (
+    chat_session,
+    device_registry as dr,
+    entity_registry as er,
+    llm,
+)
 from homeassistant.setup import async_setup_component
 
 TOOL_NAME = "conversation__trigger_sentence"
@@ -49,16 +55,40 @@ async def setup_triggers(hass: HomeAssistant, init_components) -> None:
     )
 
 
-def _llm_context() -> llm.LLMContext:
-    """Return an LLM context for a satellite."""
+@pytest.fixture
+def satellite_device_id(
+    hass: HomeAssistant,
+    device_registry: dr.DeviceRegistry,
+    entity_registry: er.EntityRegistry,
+) -> str:
+    """Register a satellite device and return its ID."""
+    entry = MockConfigEntry(domain="test")
+    entry.add_to_hass(hass)
+    device = device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id, identifiers={("test", "kitchen")}
+    )
+    entity_registry.async_get_or_create(
+        "sensor", "test", "kitchen_sensor", device_id=device.id
+    )
+    entity_registry.async_get_or_create(
+        "assist_satellite",
+        "test",
+        "kitchen",
+        device_id=device.id,
+        suggested_object_id="kitchen",
+    )
+    return device.id
+
+
+def _llm_context(device_id: str | None = None) -> llm.LLMContext:
+    """Return an LLM context for a conversation agent."""
     return llm.LLMContext(
         platform="test",
         context=Context(),
         language="en",
         assistant=conversation.DOMAIN,
-        device_id=None,
+        device_id=device_id,
         agent_id="conversation.test",
-        satellite_id="assist_satellite.kitchen",
     )
 
 
@@ -100,9 +130,9 @@ async def test_prompt_and_parameters(hass: HomeAssistant) -> None:
 
 
 @pytest.mark.usefixtures("setup_triggers")
-async def test_call_with_slots(hass: HomeAssistant) -> None:
-    """Test the tool runs the automation with the slots and user text."""
-    api = await llm.async_get_api(hass, "assist", _llm_context())
+async def test_call_with_slots(hass: HomeAssistant, satellite_device_id: str) -> None:
+    """Test the tool runs the automation with the slots, user text and satellite."""
+    api = await llm.async_get_api(hass, "assist", _llm_context(satellite_device_id))
     user_input = conversation.ConversationInput(
         text="let's get the kitchen going",
         context=Context(),
@@ -151,7 +181,7 @@ async def test_call_shared_sentence(hass: HomeAssistant) -> None:
 
     assert sorted(calls) == ["Horses", "Party mode"]
     # Without a chat log, the sentence stands in for the user's text.
-    assert result.data["response"] == "Party in , party time, assist_satellite.kitchen"
+    assert result.data["response"] == "Party in , party time, None"
 
 
 @pytest.mark.usefixtures("setup_triggers")

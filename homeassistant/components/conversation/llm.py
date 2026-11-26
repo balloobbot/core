@@ -9,6 +9,7 @@ import probatio
 
 from homeassistant.components.llm import LLMTools
 from homeassistant.core import Context, HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.llm import (
     LLM_API_ASSIST,
     LLMContext,
@@ -83,12 +84,26 @@ class TriggerSentenceTool(Tool):
                     text = content.content
                     break
 
+        # A satellite device has one assist_satellite entity.
+        satellite_id = None
+        if llm_context.device_id is not None:
+            satellite_id = next(
+                (
+                    entry.entity_id
+                    for entry in er.async_entries_for_device(
+                        er.async_get(hass), llm_context.device_id
+                    )
+                    if entry.domain == "assist_satellite"
+                ),
+                None,
+            )
+
         user_input = ConversationInput(
             text=text,
             context=llm_context.context or Context(),
             conversation_id=conversation_id,
             device_id=llm_context.device_id,
-            satellite_id=llm_context.satellite_id,
+            satellite_id=satellite_id,
             language=llm_context.language or hass.config.language,
             agent_id=llm_context.agent_id or DOMAIN,
         )
