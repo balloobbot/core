@@ -170,6 +170,9 @@ class LLMContext:
     agent_id: str | None = None
     """Conversation agent or AI task entity that is handling the LLM request."""
 
+    satellite_id: str | None = None
+    """Satellite entity that is making the request."""
+
 
 @dataclass(slots=True)
 class ToolInput:

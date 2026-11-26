@@ -894,22 +894,9 @@ class _DefaultPipelineProcessor:
                 processed_locally = agent_id == conversation.HOME_ASSISTANT_AGENT
                 all_targets_in_satellite_area = False
                 intent_response: intent.IntentResponse | None = None
+                # The default agent matches sentence triggers itself. Other agents
+                # get them as an LLM tool.
                 if not processed_locally and not self._intent_agent_only:
-                    # Sentence triggers override conversation agent
-                    if (
-                        trigger_response_text
-                        := await conversation.async_handle_sentence_triggers(
-                            self.host.hass, user_input, chat_log
-                        )
-                    ) is not None:
-                        # Sentence trigger matched
-                        agent_id = "sentence_trigger"
-                        processed_locally = True
-                        intent_response = intent.IntentResponse(
-                            self.host.pipeline.conversation_language
-                        )
-                        intent_response.async_set_speech(trigger_response_text)
-
                     intent_filter: Callable[[RecognizeResult], bool] | None = None
                     # If the LLM has API access, we filter out some sentences that are
                     # interfering with LLM operation.
@@ -923,16 +910,12 @@ class _DefaultPipelineProcessor:
                         intent_filter = _async_local_fallback_intent_filter
 
                     # Try local intents
-                    if (
-                        intent_response is None
-                        and self.host.pipeline.prefer_local_intents
-                        and (
-                            intent_response := await conversation.async_handle_intents(
-                                self.host.hass,
-                                user_input,
-                                chat_log,
-                                intent_filter=intent_filter,
-                            )
+                    if self.host.pipeline.prefer_local_intents and (
+                        intent_response := await conversation.async_handle_intents(
+                            self.host.hass,
+                            user_input,
+                            chat_log,
+                            intent_filter=intent_filter,
                         )
                     ):
                         # Local intent matched

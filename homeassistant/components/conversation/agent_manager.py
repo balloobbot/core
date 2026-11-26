@@ -46,6 +46,17 @@ if TYPE_CHECKING:
     from .trigger import TRIGGER_CALLBACK_TYPE
 
 
+@dataclasses.dataclass(slots=True)
+class SentenceTrigger:
+    """A registered sentence trigger."""
+
+    name: str | None
+    """Name of the automation that owns the trigger."""
+
+    sentences: list[str]
+    callback: TRIGGER_CALLBACK_TYPE
+
+
 @singleton.singleton("conversation_agent")
 @callback
 def get_agent_manager(hass: HomeAssistant) -> AgentManager:
@@ -176,7 +187,7 @@ class AgentManager:
             IntentSource.TRIGGER: {"intents": {}},
         }
         self._intents_subscribers: list[IntentsCallback] = []
-        self._trigger_callbacks: dict[int, TRIGGER_CALLBACK_TYPE] = {}
+        self._triggers: dict[int, SentenceTrigger] = {}
         self._trigger_callback_counter: int = 0
 
     @callback
@@ -260,7 +271,10 @@ class AgentManager:
         self._notify_intents_subscribers(IntentSource.CONFIG)
 
     def register_trigger(
-        self, sentences: list[str], trigger_callback: TRIGGER_CALLBACK_TYPE
+        self,
+        sentences: list[str],
+        trigger_callback: TRIGGER_CALLBACK_TYPE,
+        name: str | None = None,
     ) -> CALLBACK_TYPE:
         """Register a trigger."""
         trigger_id = self._trigger_callback_counter
@@ -271,14 +285,14 @@ class AgentManager:
         trigger_intents["intents"][trigger_intent_name] = {
             "data": [{"sentences": sentences}]
         }
-        self._trigger_callbacks[trigger_id] = trigger_callback
+        self._triggers[trigger_id] = SentenceTrigger(name, sentences, trigger_callback)
         self._notify_intents_subscribers(IntentSource.TRIGGER)
 
         @callback
         def unregister_trigger() -> None:
             """Unregister the trigger."""
             del trigger_intents["intents"][trigger_intent_name]
-            del self._trigger_callbacks[trigger_id]
+            del self._triggers[trigger_id]
             self._notify_intents_subscribers(IntentSource.TRIGGER)
 
         return unregister_trigger
@@ -293,6 +307,11 @@ class AgentManager:
                 sentences.extend(data.get("sentences", []))
         return sentences
 
+    @property
+    def triggers(self) -> list[SentenceTrigger]:
+        """Get all registered sentence triggers."""
+        return list(self._triggers.values())
+
     def get_trigger_callback(
         self, trigger_intent_name: str
     ) -> TRIGGER_CALLBACK_TYPE | None:
@@ -300,4 +319,6 @@ class AgentManager:
         if not trigger_intent_name.startswith(TRIGGER_INTENT_NAME_PREFIX):
             return None
         trigger_id = int(trigger_intent_name[len(TRIGGER_INTENT_NAME_PREFIX) :])
-        return self._trigger_callbacks.get(trigger_id)
+        if (trigger := self._triggers.get(trigger_id)) is None:
+            return None
+        return trigger.callback

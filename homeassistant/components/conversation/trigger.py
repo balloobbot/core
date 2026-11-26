@@ -4,9 +4,9 @@ from collections.abc import Awaitable, Callable
 import re
 from typing import Any
 
+from hassil.models import MatchEntity
 from hassil.parse_expression import parse_sentence
 from hassil.parser import ParseError
-from hassil.recognize import RecognizeResult
 from hassil.util import (
     PUNCTUATION_END,
     PUNCTUATION_END_WORD,
@@ -27,7 +27,7 @@ from .const import DOMAIN
 from .models import ConversationInput
 
 TRIGGER_CALLBACK_TYPE = Callable[
-    [ConversationInput, RecognizeResult], Awaitable[str | None]
+    [ConversationInput, dict[str, MatchEntity]], Awaitable[str | None]
 ]
 
 
@@ -103,7 +103,7 @@ async def async_attach_trigger(
     job = HassJob(action)
 
     async def call_action(
-        user_input: ConversationInput, result: RecognizeResult
+        user_input: ConversationInput, entities: dict[str, MatchEntity]
     ) -> str | None:
         """Call action with right context."""
 
@@ -118,7 +118,7 @@ async def async_attach_trigger(
                     else entity.value
                 ),
             }
-            for entity_name, entity in result.entities.items()
+            for entity_name, entity in entities.items()
         }
 
         satellite_id = user_input.satellite_id
@@ -161,5 +161,5 @@ async def async_attach_trigger(
         return None
 
     return get_agent_manager(hass).register_trigger(
-        sentences=sentences, trigger_callback=call_action
+        sentences=sentences, trigger_callback=call_action, name=trigger_info["name"]
     )

@@ -2,7 +2,7 @@
 
 import asyncio
 from collections import OrderedDict
-from collections.abc import Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from enum import Enum, auto
 import logging
@@ -1622,9 +1622,8 @@ class DefaultAgent(ConversationEntity):
         """Run sentence trigger callbacks and return response text."""
         manager = get_agent_manager(self.hass)
 
-        # Gather callback responses in parallel
         trigger_callbacks = [
-            trigger_callback(user_input, trigger_result)
+            trigger_callback(user_input, trigger_result.entities)
             for trigger_intent_name, trigger_result in result.matched_triggers.items()
             if (trigger_callback := manager.get_trigger_callback(trigger_intent_name))
             is not None
@@ -1643,6 +1642,28 @@ class DefaultAgent(ConversationEntity):
             )
         )
 
+        response_text = await self.async_run_trigger_callbacks(
+            trigger_callbacks, user_input.language
+        )
+
+        tool_result: dict[str, Any] = {"response": response_text}
+        chat_log.async_add_assistant_content_without_tools(
+            ToolResultContent(
+                agent_id=user_input.agent_id,
+                tool_call_id=tool_input.id,
+                tool_name=tool_input.tool_name,
+                result=llm.ToolResult(data=tool_result),
+            )
+        )
+
+        return response_text
+
+    async def async_run_trigger_callbacks(
+        self,
+        trigger_callbacks: list[Awaitable[str | None]],
+        language: str | None,
+    ) -> str:
+        """Run sentence trigger callbacks in parallel and return response text."""
         # Use first non-empty result as response.
         #
         # There may be multiple copies of a trigger running when editing in
@@ -1663,23 +1684,13 @@ class DefaultAgent(ConversationEntity):
             response_text = response_text or ""
         elif not response_text:
             # Use translated acknowledgment for pipeline language
-            language = user_input.language or self.hass.config.language
+            language = language or self.hass.config.language
             translations = await translation.async_get_translations(
                 self.hass, language, DOMAIN, [DOMAIN]
             )
             response_text = translations.get(
                 f"component.{DOMAIN}.conversation.agent.done", "Done"
             )
-
-        tool_result: dict[str, Any] = {"response": response_text}
-        chat_log.async_add_assistant_content_without_tools(
-            ToolResultContent(
-                agent_id=user_input.agent_id,
-                tool_call_id=tool_input.id,
-                tool_name=tool_input.tool_name,
-                result=llm.ToolResult(data=tool_result),
-            )
-        )
 
         return response_text
 

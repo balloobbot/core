@@ -69,6 +69,7 @@ class ConversationInput:
             assistant=DOMAIN,
             device_id=self.device_id,
             agent_id=self.agent_id,
+            satellite_id=self.satellite_id,
         )
 
 

@@ -1111,13 +1111,13 @@ async def test_tts_dict_preferred_format(
         assert int(options.get(TextToSpeechCommonOption.PREFERRED_SAMPLE_BYTES)) == 2
 
 
-async def test_sentence_trigger_overrides_conversation_agent(
+async def test_sentence_trigger_not_matched_for_conversation_agent(
     hass: HomeAssistant,
     init_components,
     mock_chat_session: chat_session.ChatSession,
     pipeline_data: assist_pipeline.pipeline.PipelineData,
 ) -> None:
-    """Test sentence triggers checked before non-default agent."""
+    """Test that a non-default agent handles sentence triggers itself."""
     assert await async_setup_component(
         hass,
         "automation",
@@ -1166,31 +1166,24 @@ async def test_sentence_trigger_overrides_conversation_agent(
     ):
         await pipeline_input.validate()
 
+    agent_response = intent.IntentResponse("en")
+    agent_response.async_set_speech("agent response")
     with patch(
-        "homeassistant.components.assist_pipeline.default_pipeline.conversation.async_converse"
+        "homeassistant.components.assist_pipeline.default_pipeline.conversation.async_converse",
+        return_value=conversation.ConversationResult(response=agent_response),
     ) as mock_async_converse:
         await pipeline_input.execute()
 
-        # Sentence trigger should have been handled
-        mock_async_converse.assert_not_called()
-
-        # Verify sentence trigger response
-        intent_end_event = next(
-            (
-                e
-                for e in events
-                if e.type == assist_pipeline.PipelineEventType.INTENT_END
-            ),
-            None,
-        )
-        assert (intent_end_event is not None) and intent_end_event.data
-        assert intent_end_event.data["processed_locally"] is True
-        assert (
-            intent_end_event.data["intent_output"]["response"]["speech"]["plain"][
-                "speech"
-            ]
-            == "test trigger response"
-        )
+    mock_async_converse.assert_called_once()
+    intent_end_event = next(
+        e for e in events if e.type == assist_pipeline.PipelineEventType.INTENT_END
+    )
+    assert intent_end_event.data
+    assert intent_end_event.data["processed_locally"] is False
+    assert (
+        intent_end_event.data["intent_output"]["response"]["speech"]["plain"]["speech"]
+        == "agent response"
+    )
 
 
 async def test_prefer_local_intents(
