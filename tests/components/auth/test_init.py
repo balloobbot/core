@@ -18,6 +18,7 @@ from homeassistant.auth import InvalidAuthError
 from homeassistant.auth.models import (
     TOKEN_TYPE_LONG_LIVED_ACCESS_TOKEN,
     TOKEN_TYPE_NORMAL,
+    ClientIdMatch,
     Credentials,
     RefreshToken,
 )
@@ -99,7 +100,9 @@ async def test_login_new_user_and_trying_refresh_token(
     assert resp.status == HTTPStatus.OK
     tokens = await resp.json()
 
-    assert hass.auth.async_validate_access_token(tokens["access_token"]) is not None
+    refresh_token = hass.auth.async_validate_access_token(tokens["access_token"])
+    assert refresh_token is not None
+    assert refresh_token.client_id_match is ClientIdMatch.SAME_ORIGIN
     assert tokens["ha_auth_provider"] == "insecure_example"
 
     # Use refresh token to get more tokens.
@@ -941,8 +944,8 @@ async def test_loopback_port_change_requires_pkce(
     step = await resp.json()
 
     with patch(
-        "homeassistant.components.auth.indieauth.fetch_redirect_uris",
-        return_value=["http://localhost/callback"],
+        "homeassistant.components.auth.indieauth._fetch_redirect_uris",
+        return_value=(["http://localhost/callback"], ClientIdMatch.METADATA_DOCUMENT),
     ):
         resp = await client.post(
             f"/auth/login_flow/{step['flow_id']}",
@@ -984,8 +987,8 @@ async def test_loopback_auth_code_success(
     """Exchange a code for an allowed loopback callback."""
     client = await async_setup_auth(hass, aiohttp_client, setup_api=True)
     with patch(
-        "homeassistant.components.auth.indieauth.fetch_redirect_uris",
-        return_value=[registered_uri],
+        "homeassistant.components.auth.indieauth._fetch_redirect_uris",
+        return_value=([registered_uri], ClientIdMatch.METADATA_DOCUMENT),
     ):
         code = await _async_login_for_code(
             client, code_challenge, redirect_uri="http://localhost:59019/callback"
@@ -1002,7 +1005,9 @@ async def test_loopback_auth_code_success(
     )
     assert resp.status == HTTPStatus.OK
     tokens = await resp.json()
-    assert hass.auth.async_validate_access_token(tokens["access_token"]) is not None
+    refresh_token = hass.auth.async_validate_access_token(tokens["access_token"])
+    assert refresh_token is not None
+    assert refresh_token.client_id_match is ClientIdMatch.METADATA_DOCUMENT
 
 
 @pytest.mark.parametrize(
@@ -1023,8 +1028,8 @@ async def test_loopback_auth_code_requires_verifier(
     """An intercepted loopback code cannot be redeemed without its verifier."""
     client = await async_setup_auth(hass, aiohttp_client, setup_api=True)
     with patch(
-        "homeassistant.components.auth.indieauth.fetch_redirect_uris",
-        return_value=["http://localhost/callback"],
+        "homeassistant.components.auth.indieauth._fetch_redirect_uris",
+        return_value=(["http://localhost/callback"], ClientIdMatch.METADATA_DOCUMENT),
     ):
         code = await _async_login_for_code(
             client,

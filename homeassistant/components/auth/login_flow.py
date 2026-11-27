@@ -308,7 +308,7 @@ class LoginFlowBaseView(HomeAssistantView):
         hass = request.app[KEY_HASS]
 
         context = result["context"]
-        if not await indieauth.verify_redirect_uri(
+        client_id_match = await indieauth.match_redirect_uri(
             hass,
             client_id,
             context["redirect_uri"],
@@ -316,7 +316,8 @@ class LoginFlowBaseView(HomeAssistantView):
             and context.get("code_challenge_method") == "S256",
             request_scheme=request.scheme,
             request_netloc=request.host,
-        ):
+        )
+        if client_id_match is None:
             return self.json_message("Invalid redirect URI", HTTPStatus.FORBIDDEN)
 
         result.pop("data")
@@ -341,6 +342,7 @@ class LoginFlowBaseView(HomeAssistantView):
             result_obj,
             code_challenge=context.get("code_challenge"),
             code_challenge_method=context.get("code_challenge_method"),
+            client_id_match=client_id_match,
         )  # type: ignore[typeddict-item]
 
         return self.json(result)

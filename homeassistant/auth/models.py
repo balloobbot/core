@@ -1,6 +1,7 @@
 """Auth models."""
 
 from datetime import datetime, timedelta
+from enum import StrEnum
 from ipaddress import IPv4Address, IPv6Address
 import secrets
 from typing import Any, NamedTuple
@@ -21,6 +22,15 @@ from .const import GROUP_ID_ADMIN
 TOKEN_TYPE_NORMAL = "normal"
 TOKEN_TYPE_SYSTEM = "system"
 TOKEN_TYPE_LONG_LIVED_ACCESS_TOKEN = "long_lived_access_token"
+
+
+class ClientIdMatch(StrEnum):
+    """How the redirect URI of a login was matched to the client ID."""
+
+    SAME_ORIGIN = "same_origin"
+    BUILT_IN_APP = "built_in_app"
+    LINK_TAG = "link_tag"
+    METADATA_DOCUMENT = "metadata_document"
 
 
 class AuthFlowContext(FlowContext, total=False):
@@ -127,6 +137,10 @@ class RefreshToken:
     expire_at: float | None = attr.ib(default=None)
 
     credential: Credentials | None = attr.ib(default=None)
+
+    # None for tokens that were not created by a login with a redirect URI,
+    # and for tokens created before this was recorded.
+    client_id_match: ClientIdMatch | None = attr.ib(default=None)
 
     version: str | None = attr.ib(default=__version__)
 

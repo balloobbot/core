@@ -217,6 +217,7 @@ class AuthStore:
         access_token_expiration: timedelta = ACCESS_TOKEN_EXPIRATION,
         expire_at: float | None = None,
         credential: models.Credentials | None = None,
+        client_id_match: models.ClientIdMatch | None = None,
     ) -> models.RefreshToken:
         """Create a new token for a user."""
         kwargs: dict[str, Any] = {
@@ -226,6 +227,7 @@ class AuthStore:
             "access_token_expiration": access_token_expiration,
             "expire_at": expire_at,
             "credential": credential,
+            "client_id_match": client_id_match,
         }
         if client_name:
             kwargs["client_name"] = client_name
@@ -532,6 +534,7 @@ class AuthStore:
                 last_used_at=last_used_at,
                 last_used_ip=rt_dict.get("last_used_ip"),
                 expire_at=rt_dict.get("expire_at"),
+                client_id_match=_parse_client_id_match(rt_dict.get("client_id_match")),
                 version=rt_dict.get("version"),
             )
             if "credential_id" in rt_dict:
@@ -620,6 +623,7 @@ class AuthStore:
                 else None,
                 "last_used_ip": refresh_token.last_used_ip,
                 "expire_at": refresh_token.expire_at,
+                "client_id_match": refresh_token.client_id_match,
                 "credential_id": refresh_token.credential.id
                 if refresh_token.credential
                 else None,
@@ -649,6 +653,14 @@ class AuthStore:
         groups[read_only_group.id] = read_only_group
         self._groups = groups
         self._build_token_id_to_user_id()
+
+
+def _parse_client_id_match(value: str | None) -> models.ClientIdMatch | None:
+    """Parse a stored client ID match, a newer version may store other values."""
+    try:
+        return models.ClientIdMatch(value) if value else None
+    except ValueError:
+        return None
 
 
 def _system_admin_group() -> models.Group:

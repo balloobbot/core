@@ -315,8 +315,8 @@ async def test_invalid_redirect_uri(
 
     with (
         patch(
-            "homeassistant.components.auth.indieauth.fetch_redirect_uris",
-            return_value=[],
+            "homeassistant.components.auth.indieauth._fetch_redirect_uris",
+            return_value=([], None),
         ),
         patch(
             "homeassistant.components.http.ban.process_wrong_login"
@@ -492,7 +492,7 @@ async def _async_post_while_held(
     [
         pytest.param(AuthManagerFlowManager, "async_configure", id="running-step"),
         # A finished flow is gone while its response is built.
-        pytest.param(indieauth, "verify_redirect_uri", id="building-response"),
+        pytest.param(indieauth, "match_redirect_uri", id="building-response"),
     ],
 )
 async def test_concurrent_requests_cannot_advance_the_same_flow(

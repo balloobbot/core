@@ -143,6 +143,7 @@ import probatio
 from homeassistant.auth import DuplicateCredentialsError, InvalidAuthError
 from homeassistant.auth.models import (
     TOKEN_TYPE_LONG_LIVED_ACCESS_TOKEN,
+    ClientIdMatch,
     Credentials,
     User,
 )
@@ -178,6 +179,7 @@ class AuthCodeEntry:
     credentials: Credentials
     code_challenge: str | None = None
     code_challenge_method: str | None = None
+    client_id_match: ClientIdMatch | None = None
 
 
 class StoreResultType(Protocol):
@@ -189,6 +191,7 @@ class StoreResultType(Protocol):
         result: Credentials,
         code_challenge: str | None = None,
         code_challenge_method: str | None = None,
+        client_id_match: ClientIdMatch | None = None,
     ) -> str:
         """Store flow result and return a code to retrieve it."""
 
@@ -400,7 +403,10 @@ class TokenView(HomeAssistantView):
             )
 
         refresh_token = await hass.auth.async_create_refresh_token(
-            user, client_id, credential=credential
+            user,
+            client_id,
+            credential=credential,
+            client_id_match=entry.client_id_match,
         )
         try:
             access_token = hass.auth.async_create_access_token(
@@ -555,6 +561,7 @@ def _create_auth_code_store() -> tuple[StoreResultType, RetrieveResultType]:
         result: Credentials,
         code_challenge: str | None = None,
         code_challenge_method: str | None = None,
+        client_id_match: ClientIdMatch | None = None,
     ) -> str:
         """Store flow result and return a code to retrieve it."""
         if not isinstance(result, Credentials):
@@ -571,6 +578,7 @@ def _create_auth_code_store() -> tuple[StoreResultType, RetrieveResultType]:
             credentials=result,
             code_challenge=code_challenge,
             code_challenge_method=code_challenge_method,
+            client_id_match=client_id_match,
         )
         return code
 

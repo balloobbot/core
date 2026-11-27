@@ -11,6 +11,7 @@ from aiohttp.test_utils import TestServer
 import pytest
 from pytest_homeassistant.test_util.aiohttp import AiohttpClientMocker
 
+from homeassistant.auth.models import ClientIdMatch
 from homeassistant.components.auth import indieauth
 from homeassistant.core import HomeAssistant
 
@@ -338,7 +339,7 @@ async def test_verify_redirect_uri() -> None:
         request_netloc=REQUEST_NETLOC,
     )
 
-    with patch.object(indieauth, "fetch_redirect_uris", return_value=[]):
+    with patch.object(indieauth, "_fetch_redirect_uris", return_value=([], None)):
         # Different domain
         assert not await indieauth.verify_redirect_uri(
             None,
@@ -365,6 +366,65 @@ async def test_verify_redirect_uri() -> None:
             request_scheme=REQUEST_SCHEME,
             request_netloc=REQUEST_NETLOC,
         )
+
+
+@pytest.mark.parametrize(
+    ("client_id", "redirect_uri", "client_page", "expected"),
+    [
+        (
+            "https://ex.com/client",
+            "https://ex.com/callback",
+            None,
+            ClientIdMatch.SAME_ORIGIN,
+        ),
+        (
+            "https://home-assistant.io/iOS",
+            "homeassistant://auth-callback",
+            None,
+            ClientIdMatch.BUILT_IN_APP,
+        ),
+        (
+            "https://ex.com/client",
+            "https://other.com/callback",
+            '<link rel="redirect_uri" href="https://other.com/callback">',
+            ClientIdMatch.LINK_TAG,
+        ),
+        (
+            "https://ex.com/client",
+            "https://other.com/callback",
+            json.dumps(
+                {
+                    "client_id": "https://ex.com/client",
+                    "redirect_uris": ["https://other.com/callback"],
+                }
+            ),
+            ClientIdMatch.METADATA_DOCUMENT,
+        ),
+        ("https://ex.com/client", "https://other.com/callback", "", None),
+    ],
+)
+async def test_match_redirect_uri(
+    hass: HomeAssistant,
+    mock_session: AiohttpClientMocker,
+    client_id: str,
+    redirect_uri: str,
+    client_page: str | None,
+    expected: ClientIdMatch | None,
+) -> None:
+    """Test that we report how a redirect uri matches its client id."""
+    if client_page is not None:
+        mock_session.get(client_id, text=client_page)
+
+    assert (
+        await indieauth.match_redirect_uri(
+            hass,
+            client_id,
+            redirect_uri,
+            request_scheme=REQUEST_SCHEME,
+            request_netloc=REQUEST_NETLOC,
+        )
+        is expected
+    )
 
 
 async def test_find_link_tag(hass: HomeAssistant, mock_session) -> None:
@@ -1069,7 +1129,7 @@ async def test_fetch_redirect_uris_network_error(
 )
 async def test_verify_redirect_uri_android_ios(client_id) -> None:
     """Test that we verify redirect uri correctly for Android/iOS."""
-    with patch.object(indieauth, "fetch_redirect_uris", return_value=[]):
+    with patch.object(indieauth, "_fetch_redirect_uris", return_value=([], None)):
         assert await indieauth.verify_redirect_uri(
             None,
             client_id,

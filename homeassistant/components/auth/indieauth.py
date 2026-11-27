@@ -12,6 +12,7 @@ from urllib.parse import ParseResult, urljoin, urlparse, urlsplit
 import aiohttp
 import aiohttp.client_exceptions
 
+from homeassistant.auth.models import ClientIdMatch
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import MAXIMUM_HEADER_SIZE
 from homeassistant.util.network import is_local
@@ -34,17 +35,43 @@ async def verify_redirect_uri(
     request_netloc: str,
 ) -> bool:
     """Verify the redirect URI, allowing loopback port changes only with PKCE."""
+    return (
+        await match_redirect_uri(
+            hass,
+            client_id,
+            redirect_uri,
+            allow_loopback_port_change=allow_loopback_port_change,
+            request_scheme=request_scheme,
+            request_netloc=request_netloc,
+        )
+        is not None
+    )
+
+
+async def match_redirect_uri(
+    hass: HomeAssistant,
+    client_id: str,
+    redirect_uri: str,
+    *,
+    allow_loopback_port_change: bool = False,
+    request_scheme: str,
+    request_netloc: str,
+) -> ClientIdMatch | None:
+    """Return how the redirect URI matches the client ID, None if it does not.
+
+    Loopback port changes are allowed only with PKCE.
+    """
     try:
         client_id_parts = _parse_client_id(
             client_id, request_scheme=request_scheme, request_netloc=request_netloc
         )
     except ValueError:
-        return False
+        return None
 
     try:
         redirect_parts = _parse_url(redirect_uri)
     except ValueError:
-        return False
+        return None
 
     # Verify redirect url and client url have same scheme and domain.
     is_valid = (
@@ -53,7 +80,7 @@ async def verify_redirect_uri(
     )
 
     if is_valid:
-        return True
+        return ClientIdMatch.SAME_ORIGIN
 
     # Whitelist the iOS and Android callbacks so that people can link apps
     # without being connected to the internet.
@@ -61,20 +88,20 @@ async def verify_redirect_uri(
         client_id == "https://home-assistant.io/iOS"
         and redirect_uri == "homeassistant://auth-callback"
     ):
-        return True
+        return ClientIdMatch.BUILT_IN_APP
 
     if client_id == "https://home-assistant.io/android" and redirect_uri in (
         "homeassistant://auth-callback",
         "https://wear.googleapis.com/3p_auth/io.homeassistant.companion.android",
         "https://wear.googleapis-cn.com/3p_auth/io.homeassistant.companion.android",
     ):
-        return True
+        return ClientIdMatch.BUILT_IN_APP
 
     # IndieAuth 4.2.2 allows for redirect_uri to be on different domain
     # but needs to be specified in link tag when fetching `client_id`.
-    redirect_uris = await fetch_redirect_uris(hass, client_id)
+    redirect_uris, client_id_match = await _fetch_redirect_uris(hass, client_id)
     if redirect_uri in redirect_uris:
-        return True
+        return client_id_match
     # RFC 8252 requires PKCE for native clients choosing a loopback callback port.
     if (
         allow_loopback_port_change
@@ -84,14 +111,14 @@ async def verify_redirect_uri(
             for registered_uri in redirect_uris
         )
     ):
-        return True
+        return client_id_match
     _LOGGER.debug(
         "redirect_uri %s is not among the advertised redirect uris %s for client_id %s",
         redirect_uri,
         redirect_uris,
         client_id,
     )
-    return False
+    return None
 
 
 def _without_loopback_port(uri: str) -> str | None:
@@ -206,6 +233,13 @@ async def fetch_redirect_uris(hass: HomeAssistant, url: str) -> list[str]:
 
     We do not implement extracting redirect uris from headers.
     """
+    return (await _fetch_redirect_uris(hass, url))[0]
+
+
+async def _fetch_redirect_uris(
+    hass: HomeAssistant, url: str
+) -> tuple[list[str], ClientIdMatch | None]:
+    """Find the redirect_uri values of a client_id and the format they came in."""
     body: bytes = b""
     status: int | None = None
     redirected = False
@@ -227,26 +261,29 @@ async def fetch_redirect_uris(hass: HomeAssistant, url: str) -> list[str]:
 
     except TimeoutError:
         _LOGGER.error("Timeout while looking up redirect_uri %s", url)
-        return []
+        return [], None
     except aiohttp.client_exceptions.ClientSSLError:
         _LOGGER.error("SSL error while looking up redirect_uri %s", url)
-        return []
+        return [], None
     except aiohttp.client_exceptions.ClientOSError as ex:
         _LOGGER.error("OS error while looking up redirect_uri %s: %s", url, ex.strerror)
-        return []
+        return [], None
     except aiohttp.client_exceptions.ClientConnectionError:
         _LOGGER.error(
             "Low level connection error while looking up redirect_uri %s", url
         )
-        return []
+        return [], None
     except aiohttp.client_exceptions.ClientError:
         _LOGGER.error("Unknown error while looking up redirect_uri %s", url)
-        return []
+        return [], None
 
     if redirect_uris := _parse_link_tag_redirect_uris(url, body):
-        return redirect_uris
+        return redirect_uris, ClientIdMatch.LINK_TAG
 
-    return _parse_metadata_document_redirect_uris(url, body, status, redirected)
+    return (
+        _parse_metadata_document_redirect_uris(url, body, status, redirected),
+        ClientIdMatch.METADATA_DOCUMENT,
+    )
 
 
 def _parse_link_tag_redirect_uris(url: str, body: bytes) -> list[str]:

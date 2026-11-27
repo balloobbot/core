@@ -7,7 +7,7 @@ from unittest.mock import PropertyMock, patch
 from freezegun.api import FrozenDateTimeFactory
 import pytest
 
-from homeassistant.auth import auth_store
+from homeassistant.auth import auth_store, models
 from homeassistant.core import HomeAssistant
 
 MOCK_STORAGE_DATA = {
@@ -393,3 +393,69 @@ async def test_set_expiry_date(
 
     store.async_set_expiry(token, enable_expiry=True)
     assert token.expire_at is not None
+
+
+@pytest.mark.parametrize(
+    ("stored", "expected"),
+    [
+        ("metadata_document", models.ClientIdMatch.METADATA_DOCUMENT),
+        ("from_a_newer_version", None),
+        (None, None),
+    ],
+)
+async def test_client_id_match(
+    hass: HomeAssistant,
+    hass_storage: dict[str, Any],
+    freezer: FrozenDateTimeFactory,
+    stored: str | None,
+    expected: models.ClientIdMatch | None,
+) -> None:
+    """Test loading and saving how a refresh token matched its client ID."""
+    hass_storage[auth_store.STORAGE_KEY] = {
+        "version": 1,
+        "data": {
+            "credentials": [],
+            "users": [
+                {
+                    "id": "user-id",
+                    "is_active": True,
+                    "is_owner": True,
+                    "name": "Paulus",
+                    "system_generated": False,
+                },
+            ],
+            "refresh_tokens": [
+                {
+                    "access_token_expiration": 1800.0,
+                    "client_id": "https://ex.com/client",
+                    "client_id_match": stored,
+                    "created_at": "2018-10-03T13:43:19.774637+00:00",
+                    "id": "user-token-id",
+                    "jwt_key": "some-key",
+                    "token": "some-token",
+                    "user_id": "user-id",
+                },
+            ],
+        },
+    }
+
+    store = auth_store.AuthStore(hass)
+    await store.async_load()
+    users = await store.async_get_users()
+    (token,) = users[0].refresh_tokens.values()
+    assert token.client_id_match is expected
+
+    new_token = await store.async_create_refresh_token(
+        users[0],
+        "https://ex.com/client",
+        client_id_match=models.ClientIdMatch.LINK_TAG,
+    )
+    freezer.tick(auth_store.DEFAULT_SAVE_DELAY * 2)
+    await hass.async_block_till_done()
+    await hass.async_block_till_done()
+
+    saved = {
+        token["id"]: token["client_id_match"]
+        for token in hass_storage[auth_store.STORAGE_KEY]["data"]["refresh_tokens"]
+    }
+    assert saved == {"user-token-id": expected, new_token.id: "link_tag"}
