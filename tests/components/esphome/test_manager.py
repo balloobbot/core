@@ -1855,7 +1855,17 @@ async def test_state_subscription(
     mock_client.send_home_assistant_state.reset_mock()
     hass.states.async_set("binary_sensor.test", "on", {})
     await hass.async_block_till_done()
-    assert mock_client.send_home_assistant_state.mock_calls == []
+    assert mock_client.send_home_assistant_state.mock_calls == [
+        call("binary_sensor.test", "bool", "None"),
+        call("binary_sensor.test", "float", "None"),
+    ]
+    mock_client.send_home_assistant_state.reset_mock()
+    hass.states.async_set("binary_sensor.test", "off", {})
+    await hass.async_block_till_done()
+    assert mock_client.send_home_assistant_state.mock_calls == [
+        call("binary_sensor.test", None, "off")
+    ]
+    mock_client.send_home_assistant_state.reset_mock()
     hass.states.async_remove("binary_sensor.test")
     await hass.async_block_till_done()
     assert mock_client.send_home_assistant_state.mock_calls == []

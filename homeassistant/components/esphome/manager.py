@@ -569,6 +569,15 @@ class ESPHomeManager:
         ):
             return
 
+        # ESPHome keeps the last value it received, so tell it when an
+        # attribute is removed. It treats "None" as an unset value.
+        if attribute and attribute not in new_state.attributes:
+            if old_state is not None:
+                self.cli.send_home_assistant_state(
+                    event_data["entity_id"], attribute, "None"
+                )
+            return
+
         self._send_home_assistant_state(event.data["entity_id"], attribute, new_state)
 
     @callback
