@@ -51,16 +51,32 @@ async def test_user_flow_success(
         CONF_DEVICE_TYPE: SamsungDeviceType.TV,
         CONF_INFRARED_EMITTER_ENTITY_ID: MOCK_INFRARED_ENTITY_ID,
     }
-    assert (
-        result["result"].unique_id == f"samsung_infrared_tv_{MOCK_INFRARED_ENTITY_ID}"
-    )
+    assert result["result"].unique_id is None
 
 
 @pytest.mark.usefixtures("mock_infrared_emitter_entity")
-async def test_user_flow_already_configured(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+@pytest.mark.parametrize(
+    ("device_type", "expected_type", "expected_reason"),
+    [
+        pytest.param(
+            SamsungDeviceType.TV,
+            FlowResultType.ABORT,
+            "already_configured",
+            id="same_type",
+        ),
+        pytest.param(
+            SamsungDeviceType.AC, FlowResultType.CREATE_ENTRY, None, id="other_type"
+        ),
+    ],
+)
+async def test_user_flow_duplicate_check(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    device_type: SamsungDeviceType,
+    expected_type: FlowResultType,
+    expected_reason: str | None,
 ) -> None:
-    """Test user flow aborts when entry is already configured."""
+    """Test only the same device type on the same emitter counts as a duplicate."""
     mock_config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
@@ -72,13 +88,13 @@ async def test_user_flow_already_configured(
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={
-            CONF_DEVICE_TYPE: SamsungDeviceType.TV,
+            CONF_DEVICE_TYPE: device_type,
             CONF_INFRARED_EMITTER_ENTITY_ID: MOCK_INFRARED_ENTITY_ID,
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    assert result["type"] is expected_type
+    assert result.get("reason") == expected_reason
 
 
 @pytest.mark.usefixtures("init_infrared")
@@ -89,7 +105,7 @@ async def test_user_flow_no_emitters(hass: HomeAssistant) -> None:
     )
 
     assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "no_emitters"
+    assert result["reason"] == "no_infrared_emitters"
 
 
 @pytest.mark.usefixtures("mock_infrared_emitter_entity")
@@ -122,9 +138,6 @@ async def test_user_flow_title_from_entity_name(
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == expected_title
-    assert (
-        result["result"].unique_id == f"samsung_infrared_tv_{MOCK_INFRARED_ENTITY_ID}"
-    )
 
 
 @pytest.mark.usefixtures("init_integration")
@@ -133,7 +146,8 @@ async def test_reconfigure_flow(
     mock_config_entry: MockConfigEntry,
     entity_registry: er.EntityRegistry,
 ) -> None:
-    """Test reconfigure flow keeps the device type and updates the title."""
+    """Test reconfigure keeps the device type and entry title."""
+    original_title = mock_config_entry.title
     entity_registry.async_update_entity(MOCK_INFRARED_ENTITY_ID, name="Lounge emitter")
 
     result = await mock_config_entry.start_reconfigure_flow(hass)
@@ -149,14 +163,11 @@ async def test_reconfigure_flow(
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
-    assert mock_config_entry.title == "Samsung TV via Lounge emitter"
+    assert mock_config_entry.title == original_title
     assert mock_config_entry.data == {
         CONF_DEVICE_TYPE: SamsungDeviceType.TV,
         CONF_INFRARED_EMITTER_ENTITY_ID: MOCK_INFRARED_ENTITY_ID,
     }
-    assert (
-        mock_config_entry.unique_id == f"samsung_infrared_tv_{MOCK_INFRARED_ENTITY_ID}"
-    )
 
 
 @pytest.mark.usefixtures("init_integration")
@@ -170,6 +181,7 @@ async def test_reconfigure_flow_different_emitter(
         "second_ir_emitter", name="Second IR emitter"
     )
     await hass.data[DATA_COMPONENT].async_add_entities([second_emitter])
+    original_title = mock_config_entry.title
 
     result = await mock_config_entry.start_reconfigure_flow(hass)
     result = await hass.config_entries.flow.async_configure(
@@ -181,13 +193,13 @@ async def test_reconfigure_flow_different_emitter(
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
     assert mock_config_entry.state is ConfigEntryState.LOADED
-    assert mock_config_entry.title == "Samsung TV via Second IR emitter"
+    assert mock_config_entry.title == original_title
     assert mock_config_entry.data == {
         CONF_DEVICE_TYPE: SamsungDeviceType.TV,
         CONF_INFRARED_EMITTER_ENTITY_ID: SECOND_EMITTER_ENTITY_ID,
     }
     assert (
-        mock_config_entry.unique_id == f"samsung_infrared_tv_{SECOND_EMITTER_ENTITY_ID}"
+        mock_config_entry.unique_id == f"samsung_infrared_tv_{MOCK_INFRARED_ENTITY_ID}"
     )
 
     await hass.services.async_call(
@@ -238,4 +250,4 @@ async def test_reconfigure_flow_no_emitters(
     result = await mock_config_entry.start_reconfigure_flow(hass)
 
     assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "no_emitters"
+    assert result["reason"] == "no_infrared_emitters"
