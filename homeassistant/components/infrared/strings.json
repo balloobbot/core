@@ -8,6 +8,12 @@
     "no_infrared_emitters": "No infrared emitter entities found. Please set up an infrared device first.",
     "no_infrared_entities": "No infrared entities found. Please set up an infrared device first."
   },
+  "config": {
+    "abort": {
+      "infrared_entity_not_available": "The selected infrared entity is no longer available. Start reconfiguration again and select another entity."
+    },
+    "step": {}
+  },
   "entity_component": {
     "emitter": {
       "name": "Infrared emitter"

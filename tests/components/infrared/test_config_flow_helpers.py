@@ -394,3 +394,46 @@ async def test_reconfigure_abort_no_emitters(hass: HomeAssistant) -> None:
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "no_infrared_emitters"
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "user_input"),
+    [
+        pytest.param(
+            OTHER_ENTRY_EMITTER_ENTITY_ID,
+            {EMITTER_KEY: OTHER_ENTRY_EMITTER_ENTITY_ID},
+            id="emitter",
+        ),
+        pytest.param(
+            RECEIVER_ENTITY_ID,
+            {EMITTER_KEY: EMITTER_ENTITY_ID, RECEIVER_KEY: RECEIVER_ENTITY_ID},
+            id="receiver",
+        ),
+    ],
+)
+@pytest.mark.usefixtures(
+    "mock_infrared_emitter_entity", "mock_infrared_receiver_entity"
+)
+async def test_reconfigure_removed_entity(
+    hass: HomeAssistant, entity_id: str, user_input: dict[str, str]
+) -> None:
+    """Test reconfigure rejects an entity removed while the form is open."""
+    component = hass.data[DATA_COMPONENT]
+    second_emitter = MockInfraredEmitterEntity(
+        "other_entry_ir_emitter", "Other entry IR emitter"
+    )
+    await component.async_add_entities([second_emitter])
+    entry = MockConfigEntry(domain=TEST_DOMAIN, data={EMITTER_KEY: EMITTER_ENTITY_ID})
+    entry.add_to_hass(hass)
+    result = await entry.start_reconfigure_flow(hass)
+
+    entity = component.get_entity(entity_id)
+    await entity.platform.async_remove_entity(entity_id)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "infrared_entity_not_available"
+    assert result["translation_domain"] == "infrared"
+    assert entry.data == {EMITTER_KEY: EMITTER_ENTITY_ID}

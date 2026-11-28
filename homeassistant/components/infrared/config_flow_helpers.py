@@ -74,6 +74,25 @@ class InfraredConsumerConfigFlow(ConfigFlow, metaclass=ABCMeta):
         schema = self._async_infrared_reconfigure_schema()
 
         if user_input is not None:
+            # The form may still list entities that have since been removed.
+            registry = er.async_get(self.hass)
+            emitter_id = er.async_resolve_entity_id(
+                registry, user_input[self.INFRARED_EMITTER_KEY]
+            )
+            receiver_id = (
+                user_input.get(self.INFRARED_RECEIVER_KEY)
+                if self.INFRARED_RECEIVER_KEY is not None
+                else None
+            )
+            if emitter_id not in async_get_emitters(self.hass) or (
+                receiver_id is not None
+                and er.async_resolve_entity_id(registry, receiver_id)
+                not in async_get_receivers(self.hass)
+            ):
+                return self.async_abort(
+                    reason="infrared_entity_not_available", translation_domain=DOMAIN
+                )
+
             # Keep the data the form does not show, and drop cleared optional fields.
             data = {
                 key: value
